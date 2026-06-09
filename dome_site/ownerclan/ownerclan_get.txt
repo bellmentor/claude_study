@@ -1,3 +1,9 @@
 url : https://ownerclan.com/
 
-1. 로그인 : https://ownerclan.com/V2/member/loginform.php
+1. 로그인 url : https://ownerclan.com/V2/member/loginform.php
+2. 주문/배송조회 url : https://ownerclan.com/V2/service/orderList.php
+3. 조회기간 선택 :  조회기간은 어떻게 결정할까?
+4. 취소요청, 주문취소, 반품요청, 반품진행, 반품완료, 교환요청, 교환진행, 교환완료 체크해제.
+5. 조회하기
+6. 엑셀 다운로드   :  >> 어디에 다운받을까?
+7. 총결제금액 의 모든 금액 합하기. >> 오너클랜 총 매입금 끝
