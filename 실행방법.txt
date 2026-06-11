@@ -1,0 +1,30 @@
+== 도매처별 개별 실행 방법 ==
+
+※ 반드시 프로젝트 루트(C:\000.work\0.git_test)에서 실행
+※ venv 활성화 필수: source .venv/Scripts/activate
+
+────────────────────────────────
+[오너클랜]
+────────────────────────────────
+
+# 전체 실행 (로그인 → 주문조회 → 엑셀 다운로드 → 매입금 합산)
+python -m dome_site.ownerclan.main
+
+# 로그인만 테스트
+python -m dome_site.ownerclan.login
+
+# 매입금 합산만 (이미 다운로드한 엑셀이 있을 때)
+python -m dome_site.ownerclan.summarize
+
+────────────────────────────────
+[새 도매처 추가 시 복붙용]
+────────────────────────────────
+
+# 전체 실행
+python -m dome_site.<slug>.main
+
+# 로그인만 테스트
+python -m dome_site.<slug>.login
+
+# 매입금 합산만
+python -m dome_site.<slug>.summarize

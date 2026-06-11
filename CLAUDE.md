@@ -21,14 +21,16 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 ## 사이트 모듈 작성 규칙
 
 - **모듈 구성**: 사이트 폴더는 파이썬 패키지로 구성한다 (`__init__.py` 필요). 표준 파일:
+  - `main.py` — 도매처 전체 흐름 오케스트레이터 (로그인 → 주문조회/엑셀 다운로드 → 매입금 합산). `run(year, month)` 함수로 진입. 기준 구현: `dome_site/ownerclan/main.py`.
   - `session.py` — 모듈 수준 브라우저 세션 관리 (필수, 사이트마다 하나).
-  - 오퍼레이션 파일들 — `login.py`, `orders.py`, `logout.py` 등 작업 단위로 분리. 한 파일에 한 오퍼레이션 집중.
+  - `summarize.py` — 다운로드된 엑셀에서 총결제금액 합산 → `dome_site/도매_매입금.xlsx` 에 기록. 기준 구현: `dome_site/ownerclan/summarize.py`.
+  - 오퍼레이션 파일들 — `login.py`, `orders.py`, `logout.py` 등 작업 단위로 분리. 한 파일에 한 오퍼레이션 집중. 오퍼레이션 파일은 자기 작업만 수행하고, 흐름 제어는 `main.py`에 맡긴다.
 - **함수 명명**: 동사_명사 snake_case 영어. 함수 위에 한 줄 한글 docstring 필수(메인 웹의 버튼 라벨과 1:1 대응되도록).
   - `login()` — 로그인. 성공 시 인증된 Playwright `BrowserContext`/`Page` 반환 가능(세션 재사용 대비).
   - `fetch_orders(start_date, end_date)` — 주문목록 수집. 날짜는 `YYYY-MM-DD` 문자열 또는 `datetime.date`.
   - `logout()`, `close()` — 필요 시.
 - **자격 정보 로딩**: 사이트 모듈이 `계정정보.xlsx` (Sheet1, 컬럼 `사이트/아이디/비번`) 에서 한글 사이트명으로 자기 행을 찾는다. 기준 구현: `dome_site/ownerclan/login.py` 의 `load_credentials()`. 공용 헬퍼는 **두 번째 사이트를 만들 때** 추출 (추측 추상화 금지).
-- **단독 실행 유지**: 각 오퍼레이션 모듈 끝에 `if __name__ == "__main__": asyncio.run(...)` 블록을 두어 메인 웹 없이도 단독 실행/디버깅 가능해야 한다. 실행은 **패키지 형식**: `python -m dome_site.<slug>.<op_module>` (예: `python -m dome_site.ownerclan.login`). 단독 실행 시에는 진입점 함수가 마지막에 `close_session()` 까지 호출해 브라우저를 정리한다.
+- **실행 방식**: 도매처 전체 흐름은 `python -m dome_site.<slug>.main` 으로 실행한다. 개별 오퍼레이션 테스트는 `python -m dome_site.<slug>.login` 등으로 단독 실행. `login.py` 등 개별 테스트가 필요한 모듈만 `if __name__ == "__main__":` 블록을 둔다. 오퍼레이션 파일(orders.py 등)은 순수 함수만 제공하고 단독 실행 블록을 두지 않는다.
 - **메인 웹 호출 계약**: 메인 웹은 `from dome_site.<slug>.<op_module> import <op_func>` 로 호출한다. 따라서 부수효과(브라우저 띄우기, 네트워크 요청)는 import 시점이 아니라 함수 호출 시점에 일어나야 한다.
 - **Playwright 세션 정책 (필수)**: **같은 도매처 안의 모든 오퍼레이션은 같은 브라우저 세션을 공유**한다. 오퍼레이션마다 브라우저를 닫고 다시 띄우면 로그인 쿠키가 유실되므로 **금지**. 다른 도매처로 전환할 때만 세션을 닫는다. 구현 규칙:
   - 사이트 패키지의 `session.py` 에 모듈 수준 컨테이너로 `playwright`/`browser`/`context`/`page` 인스턴스를 보관한다.
@@ -52,10 +54,19 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 5. 이후 사용자 지시에 따라 `orders.py` 등 오퍼레이션 모듈을 순서대로 추가.
 6. `app/` 메인 웹이 존재한다면, 사이트 등록 지점에 새 사이트를 노출(등록 방식은 메인 웹 설계 시 정의).
 
+## 엑셀 처리
+
+- 엑셀 파일을 읽고 쓸 때는 **pandas를 우선** 사용한다. openpyxl은 pandas가 처리할 수 없는 경우(셀 서식 등)에만 사용.
+
 ## 작업 언어 및 인코딩
 
 - 모든 노트, 폴더 라벨, 커밋 메시지, 그리고 Claude의 설명/응답은 **한국어**로 작성한다. (기존 커밋: `도매사이트 수집 txt 추가`, `도매사이트별 폴더 추가`)
 - 파일을 생성하거나 수정할 때는 **반드시 UTF-8 인코딩**을 사용해 한글이 깨지지 않도록 한다. BOM 없이 저장하고, 줄바꿈 등으로 인한 한글 손상이 의심되면 즉시 다시 확인한다.
+
+## 진행상황 확인 (필수)
+
+- 작업 시작 전 **반드시 `진행상황.txt`를 읽고 숙지**한다. 어떤 도매처가 완료/미완료인지, 주의사항이 무엇인지 파악한 뒤 작업에 들어간다.
+- 작업이 끝나면 `진행상황.txt`를 최신 상태로 업데이트한다.
 
 ## 작업 진행 방식
 

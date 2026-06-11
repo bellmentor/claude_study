@@ -1,9 +1,26 @@
 url : https://ownerclan.com/
 
 1. 로그인 url : https://ownerclan.com/V2/member/loginform.php
+ id : <input type="text" id="id" name="id" class="id_pass" placeholder="아이디" tabindex="10" data-gtm-form-interact-field-id="0">
+ pw : <input type="password" id="passwd" name="passwd" class="pw_pass" placeholder="비밀번호" tabindex="11" onfocus="onMouseFocus(this)" onblur="onMouseBlur(this)" data-gtm-form-interact-field-id="1">
+ login버튼: <input type="submit" class="img_log" value="" tabindex="13">
 2. 주문/배송조회 url : https://ownerclan.com/V2/service/orderList.php
-3. 조회기간 선택 :  조회기간은 어떻게 결정할까?
+
+3. 조회기간 선택 :  나중에 상위 단에서 몇월인지 알려줄꺼임. 일단 26년5월이라고 가정하기.
+시작날짜: <input type="text" name="startDate" id="startDatepicker" style="width:100px;padding-top:3px;padding-left:5px;" onkeyup="setChangeDate(this)" autocomplete="off" class="hasDatepicker" data-gtm-form-interact-field-id="0">
+끝 날짜 : <input type="text" name="finishDate" id="finishDatepicker" style="width:100px;padding-top:3px;padding-left:5px;" onkeyup="setChangeDate(this)" autocomplete="off" class="hasDatepicker">
+시작날짜 와 끝날짜에는 "2026-04-08" 이런형식으로 텍스트를 입력해야 함.
+예를들어 26년 5월 이면 >> 2026-05-01 이 시작날짜에 들어가고, 2026-05-31 이 끝날짜에 들어가야 함.
 4. 취소요청, 주문취소, 반품요청, 반품진행, 반품완료, 교환요청, 교환진행, 교환완료 체크해제.
-5. 조회하기
-6. 엑셀 다운로드   :  >> 어디에 다운받을까?
+ 1) 전체 체크 했다가 체크 해제 : <input id="all_check" name="all_check" type="checkbox" onclick="allDeliChk()" data-gtm-form-interact-field-id="1">
+ 2) 결제완료:<input name="deliType" id="deliType_N" type="checkbox" value="N" onclick="setInitPage(this);getOrderList()">
+     배송준비 : <input name="deliType" id="deliType_S" type="checkbox" value="S" onclick="setInitPage(this);getOrderList()">
+    배송중 :<input name="deliType" id="deliType_Y" type="checkbox" value="Y" onclick="setInitPage(this);getOrderList()">
+    배송완료 : <input name="deliType" id="deliType_E" type="checkbox" value="E" onclick="setInitPage(this);getOrderList()">
+    만 체크 하기. 체크 한번에 딜레이 0.2초.
+5. 조회하기 : <img src="/V2/_skin/ownerclan_v2/_img/service/order_search_btn.svg" alt="조회하기">
+6. 엑셀 다운로드   :  
+ 엑셀다운로드 버튼 : <img src="/V2/_skin/ownerclan_v2/_img/service/order_excel_btn.svg" alt="엑셀 다운로드">
+  다운로드 위치 : ./downloads
+  파일명 : yymmdd_오너클랜_매입금.xlsx
 7. 총결제금액 의 모든 금액 합하기. >> 오너클랜 총 매입금 끝
