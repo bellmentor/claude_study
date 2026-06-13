@@ -6,6 +6,7 @@
 
 from __future__ import annotations
 
+import sys
 import time
 import traceback
 from datetime import datetime
@@ -14,6 +15,15 @@ from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
     from playwright.async_api import Page
+
+# 콘솔 출력을 UTF-8 로 고정한다.
+# Windows 기본 콘솔/파이프 인코딩이 cp949 면 한글·기호(→ — ✅ 등) 출력 시
+# UnicodeEncodeError 로 흐름이 죽거나 글자가 깨져 로그가 사라진다. 이를 방지한다.
+for _stream in (sys.stdout, sys.stderr):
+    try:
+        _stream.reconfigure(encoding="utf-8", errors="replace")  # type: ignore[union-attr]
+    except Exception:
+        pass
 
 DUMP_DIR = Path(__file__).resolve().parent / "error_dumps"
 

@@ -61,6 +61,8 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 - subprocess 환경변수: `WEBUI=1` (input 대기 건너뛰기), `PYTHONIOENCODING=utf-8` (한글 깨짐 방지).
 - 각 도매처 `main.py`는 CLI 인자(`year month`)를 받을 수 있어야 한다.
 - 타임아웃/재시도는 각 도매처 모듈 내부에서 처리. web은 exit code와 stdout만 수신한다.
+- **로그 전달은 HTTP 폴링으로 한다 (WebSocket 금지)**: subprocess stdout 을 서버 메모리 버퍼(`_logs`)에 쌓고, 진행상황 폴링(`GET /api/collect/status?since=N`)이 `since` 이후 새 로그를 함께 내려준다. 클라이언트는 받은 개수를 다음 `since`로 보낸다. WebSocket 은 재연결·replay 가 없어 연결이 한 번 끊기거나 늦게 붙으면 로그가 통째로 유실된다(머신/타이밍/보안SW에 따라 한 PC만 깨지는 증상). 폴링은 유지할 연결이 없어 환경 무관하게 안정적이다. (2026-06-14 WebSocket→폴링 전환)
+- **정적 파일(app.js/css) 수정 후엔 브라우저 강력 새로고침(Ctrl+F5) 안내**: 브라우저 캐시 때문에 옛 JS 가 돌아 "코드 고쳤는데 그대로"인 착시가 생긴다.
 
 ## 엑셀 처리
 
@@ -70,6 +72,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 - 모든 노트, 폴더 라벨, 커밋 메시지, 그리고 Claude의 설명/응답은 **한국어**로 작성한다. (기존 커밋: `도매사이트 수집 txt 추가`, `도매사이트별 폴더 추가`)
 - 파일을 생성하거나 수정할 때는 **반드시 UTF-8 인코딩**을 사용해 한글이 깨지지 않도록 한다. BOM 없이 저장하고, 줄바꿈 등으로 인한 한글 손상이 의심되면 즉시 다시 확인한다.
+- **콘솔 출력 UTF-8 강제**: Windows 기본 콘솔/파이프는 cp949 라서 한글은 되더라도 기호·이모지(→ — ✅ 등)에서 `print()` 가 `UnicodeEncodeError` 로 죽거나 글자가 깨진다. 콘솔로 출력하는 진입점(`dome_site/logger.py`, `app/server.py`)은 import 시점에 `sys.stdout/stderr.reconfigure(encoding="utf-8", errors="replace")` 로 고정한다(try/except 가드). 새 진입 스크립트도 동일 패턴을 따른다. PC마다 콘솔 인코딩이 다르므로(cp949 vs utf-8) 이 처리가 없으면 한 PC에서만 로그가 깨지는 증상이 난다.
 
 ## 진행상황 확인 및 정리 (필수)
 

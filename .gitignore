@@ -1,12 +1,17 @@
-# 계정정보 엑셀
-계정정보.xlsx
-~$계정정보.xlsx
+# 엑셀 파일 전체 (계정정보, 다운로드 매입금, 합산결과 등 — 추적 안 함)
+*.xlsx
+*.xls
+~$*.xlsx
+~$*.xls
 
 # Python 캐시
 __pycache__/
 
 # 에러 덤프 (스크린샷, HTML)
 error_dumps/
+
+# 로그인 확인용 스크린샷 (실행 시마다 갱신되는 산출물)
+after_login.png
 
 # venv
 .venv/

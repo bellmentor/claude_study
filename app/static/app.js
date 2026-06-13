@@ -189,7 +189,9 @@ document.getElementById('btn-collect').addEventListener('click', async () => {
     btn.disabled = true;
     btn.textContent = '수집 중...';
 
-    connectWebSocket();
+    // 로그 박스 초기화 + 폴링 인덱스 리셋
+    document.getElementById('log-box').innerHTML = '';
+    logSince = 0;
 
     try {
         const resp = await fetch('/api/collect', {
@@ -213,14 +215,23 @@ document.getElementById('btn-collect').addEventListener('click', async () => {
     }
 });
 
-// ── 진행상황 폴링 ────────────────────────────────
+// ── 진행상황 + 로그 폴링 ─────────────────────────
 let pollTimer = null;
+let logSince = 0;  // 서버에서 받은 로그 개수 (다음 요청의 since)
 
 function startPolling() {
     pollTimer = setInterval(async () => {
         try {
-            const resp = await fetch('/api/collect/status');
+            const resp = await fetch(`/api/collect/status?since=${logSince}`);
             const data = await resp.json();
+
+            // 새 로그 출력
+            if (Array.isArray(data.logs)) {
+                data.logs.forEach(appendLog);
+            }
+            if (typeof data.log_count === 'number') {
+                logSince = data.log_count;
+            }
 
             // 테이블 업데이트
             for (const [slug, info] of Object.entries(data.sites)) {
@@ -239,21 +250,10 @@ function startPolling() {
                 btn.textContent = '수집시작';
             }
         } catch (e) { /* 무시 */ }
-    }, 1000);
+    }, 800);
 }
 
-// ── WebSocket 로그 ───────────────────────────────
-let ws = null;
-
-function connectWebSocket() {
-    if (ws && ws.readyState === WebSocket.OPEN) return;
-
-    const proto = location.protocol === 'https:' ? 'wss:' : 'ws:';
-    ws = new WebSocket(`${proto}//${location.host}/ws/logs`);
-    ws.onmessage = (e) => appendLog(e.data);
-    ws.onclose = () => { ws = null; };
-}
-
+// ── 로그 출력 ────────────────────────────────────
 function appendLog(msg) {
     const box = document.getElementById('log-box');
     const line = document.createElement('div');
@@ -328,4 +328,3 @@ document.getElementById('btn-save-accounts').addEventListener('click', async () 
 
 // ── 초기화 ───────────────────────────────────────
 initCalendar();
-connectWebSocket();

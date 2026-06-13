@@ -1,5 +1,5 @@
 == Web UI 진행상황 ==
-최종 수정일: 2026-06-13
+최종 수정일: 2026-06-14
 
 참고 이미지: ui_test/매입금수집창.png, ui_test/설정창.png
 
@@ -7,9 +7,14 @@
 [기술 스택] 확정
 ════════════════════════════════════════
 
-- 백엔드: FastAPI (async, WebSocket 내장)
+- 백엔드: FastAPI (async)
 - 프론트엔드: Jinja2 템플릿 + vanilla JS (빌드 도구 없음)
-- 실시간 로그: WebSocket (/ws/logs)
+- 로그 전달: HTTP 폴링 (GET /api/collect/status?since=N, 0.8초 간격)
+  - 2026-06-14 변경: WebSocket → 폴링. WebSocket은 재연결/replay가 없어
+    연결이 한 번 끊기거나 늦게 붙으면 로그가 통째로 유실됐다(머신/타이밍 의존).
+    서버가 로그를 버퍼(_logs)에 쌓고, 진행상황 폴링이 since 이후 로그를 함께
+    내려주는 방식으로 변경 → 환경 무관하게 안정 동작.
+  - /ws/logs 엔드포인트는 레거시로 남아있으나 클라이언트는 더 이상 사용 안 함.
 - 의존성: fastapi, uvicorn, jinja2 (+ 기존 openpyxl, playwright, pandas)
 
 ════════════════════════════════════════
@@ -18,12 +23,14 @@
 
 app/
 ├── __init__.py
-├── server.py          # FastAPI 앱 + 모든 API 엔드포인트 + WebSocket
+├── server.py          # FastAPI 앱 + 모든 API 엔드포인트 + 로그 버퍼(_logs)
+│                      #  - 상단에서 stdout/stderr UTF-8 reconfigure (cp949 깨짐 방지)
+│                      #  - subprocess 로그를 콘솔 print + 버퍼 append (send_log)
 ├── templates/
 │   └── index.html     # 단일 페이지 (탭 전환은 JS)
 └── static/
     ├── style.css      # UI 스타일
-    └── app.js         # 탭 전환, 달력, 수집 요청, WebSocket 로그
+    └── app.js         # 탭 전환, 달력, 수집 요청, 폴링으로 로그 수신(since)
 
 ════════════════════════════════════════
 [실행 방법]
@@ -37,12 +44,12 @@ app/
 [API 엔드포인트]
 ════════════════════════════════════════
 
-GET  /                   : 메인 페이지
-GET  /api/accounts       : 계정 목록 조회 (계정정보.xlsx)
-PUT  /api/accounts       : 계정 정보 수정 → xlsx 저장
-POST /api/collect        : 매입금 수집 시작 (sites[], start_date, end_date)
-GET  /api/collect/status : 수집 진행상황 조회
-WS   /ws/logs            : 실시간 로그 스트림
+GET  /                       : 메인 페이지
+GET  /api/accounts           : 계정 목록 조회 (계정정보.xlsx)
+PUT  /api/accounts           : 계정 정보 수정 → xlsx 저장
+POST /api/collect            : 매입금 수집 시작 (sites[], start_date, end_date)
+GET  /api/collect/status?since=N : 진행상황 + N 인덱스 이후 새 로그(logs, log_count) 반환
+WS   /ws/logs                : (레거시) 클라이언트 미사용
 
 ════════════════════════════════════════
 [화면 구성] 2개 탭
@@ -75,11 +82,17 @@ WS   /ws/logs            : 실시간 로그 스트림
     [O] 수집 시작 엔드포인트 (POST /api/collect)
     [O] 진행상황 조회 엔드포인트 (GET /api/collect/status)
     [O] 계정 CRUD 엔드포인트 (GET/PUT /api/accounts)
-    [O] 실시간 로그 (WebSocket /ws/logs)
+    [O] 로그 전달 (HTTP 폴링 + 서버 로그 버퍼, 2026-06-14 WebSocket에서 전환)
 [O] 기존 dome_site 모듈 연동 (subprocess 방식: python -m dome_site.<slug>.main)
     [O] 오너클랜 연동 — 테스트 완료 (5월 매입금 892,830원 확인)
     [O] 젠트레이드 연동 — 모듈 구현 완료, 테스트 완료 (5월 매입금 230,240원 확인, 2026-06-13)
     [ ] 기타 도매처 연동 (모듈 구현 후 자동 연동)
 [O] API 테스트 완료 (수집 흐름 end-to-end, 2026-06-13)
 [O] 브라우저에서 실제 UI 동작 확인 (수집+로그 한글 정상 표시, 2026-06-13)
+[O] 로그 유실 버그 수정 (2026-06-14)
+    - 증상: 데스크톱에서 수집/매입금은 뜨는데 로그만 안 뜸 (노트북은 정상)
+    - 원인: WebSocket 단일 채널 의존(재연결·replay 없음) → 연결 삐끗하면 로그 전손.
+            HTTP 폴링은 두 머신 다 정상이었음(매입금 표시가 증거).
+    - 조치: 서버 로그 버퍼 + 폴링 전달로 변경. WebSocket 클라이언트 코드 제거.
+    - 주의: app.js는 정적파일이라 브라우저 캐시 영향 → 적용 후 Ctrl+F5 강력새로고침 필요.
 [ ] UI 세부 조정 (디자인 그림과 비교)

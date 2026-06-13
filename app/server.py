@@ -13,6 +13,14 @@ import threading
 from pathlib import Path
 from typing import Any
 
+# 서버 콘솔 출력을 UTF-8 로 고정한다.
+# (Windows cp949 콘솔/파이프에서 한글·기호가 깨지거나 UnicodeEncodeError 로 죽는 것을 방지)
+for _stream in (sys.stdout, sys.stderr):
+    try:
+        _stream.reconfigure(encoding="utf-8", errors="replace")  # type: ignore[union-attr]
+    except Exception:
+        pass
+
 import openpyxl
 import pandas as pd
 from fastapi import FastAPI, WebSocket, WebSocketDisconnect
@@ -29,7 +37,10 @@ SITE_LIST_TXT = ROOT / "dome_site" / "도매사이트_폴더_이름.txt"
 SUMMARY_XLSX = ROOT / "dome_site" / "도매_매입금.xlsx"
 PYTHON = sys.executable
 
-# ── WebSocket 로그 브로드캐스터 ────────────────────────────
+# ── 로그 버퍼 + WebSocket 브로드캐스터 ─────────────────────
+# 로그는 HTTP 폴링(상태 조회)으로 받는 것을 1차 채널로 한다. WebSocket 은
+# 리로드/늦은 연결 시 메시지를 놓치므로, 버퍼에 쌓아두고 폴링으로 재생한다.
+_logs: list[str] = []
 _ws_clients: set[WebSocket] = set()
 _collect_status: dict[str, dict[str, Any]] = {}
 _collect_running = False
@@ -63,9 +74,13 @@ async def broadcast_log(message: str) -> None:
 
 
 def send_log(message: str) -> None:
-    """어느 스레드에서든 호출 가능한 로그 전송. 메인 루프에 전달한다."""
-    if _main_loop and message.strip():
-        asyncio.run_coroutine_threadsafe(broadcast_log(message.strip()), _main_loop)
+    """어느 스레드에서든 호출 가능한 로그 전송. 버퍼에 쌓고 WebSocket 으로도 보낸다."""
+    msg = message.strip()
+    if not msg:
+        return
+    _logs.append(msg)  # 폴링으로 재생할 버퍼 (1차 채널)
+    if _main_loop:  # 연결돼 있으면 실시간 전송 (보조 채널)
+        asyncio.run_coroutine_threadsafe(broadcast_log(msg), _main_loop)
 
 
 # ── 도매사이트 목록 파싱 ───────────────────────────────────
@@ -109,6 +124,9 @@ def _run_site_subprocess(slug: str, name: str, year: int, month: int) -> None:
         for line in proc.stdout:
             line = line.rstrip()
             if line:
+                # 서버를 띄운 터미널에도 그대로 출력 (도매처 상세 로그를 콘솔에서 확인)
+                print(line, flush=True)
+                # 브라우저 로그 박스로 전송
                 send_log(line)
 
         proc.wait()
@@ -236,6 +254,7 @@ async def start_collect(request: Request):
 
     _collect_running = True
     _collect_status.clear()
+    _logs.clear()  # 새 수집 시작 시 로그 버퍼 초기화
 
     thread = threading.Thread(
         target=_run_all_sites, args=(sites, year, month), daemon=True
@@ -245,9 +264,15 @@ async def start_collect(request: Request):
 
 
 @app.get("/api/collect/status")
-async def collect_status():
-    """현재 수집 진행상황을 반환한다."""
-    return {"running": _collect_running, "sites": _collect_status}
+async def collect_status(since: int = 0):
+    """현재 수집 진행상황 + since 인덱스 이후의 새 로그를 반환한다."""
+    new_logs = _logs[since:] if since < len(_logs) else []
+    return {
+        "running": _collect_running,
+        "sites": _collect_status,
+        "logs": new_logs,
+        "log_count": len(_logs),
+    }
 
 
 # ── WebSocket ─────────────────────────────────────────────
