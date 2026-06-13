@@ -1,0 +1,16 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(timeout 8 python -m app.server)",
+      "Bash(python -m app.server)",
+      "Bash(curl -s http://localhost:8000/)",
+      "Bash(curl -s http://localhost:8000/api/accounts)",
+      "Bash(python -m json.tool)",
+      "Bash(curl -s -X POST http://localhost:8000/api/collect -H \"Content-Type: application/json\" -d '{\"sites\":[{\"slug\":\"ownerclan\",\"name\":\"오너클랜\"}],\"start_date\":\"2026-05-01\",\"end_date\":\"2026-05-31\"}')",
+      "Bash(curl:*)",
+      "Bash(python -c ':*)",
+      "Bash(taskkill //F //IM python.exe)",
+      "Read(//tmp/**)"
+    ]
+  }
+}

@@ -29,7 +29,8 @@ async def run(year: int, month: int) -> int:
 
         summarize_purchase(start)
 
-        if MODE == "debug":
+        import os
+        if MODE == "debug" and not os.environ.get("WEBUI"):
             print("\n[debug] 브라우저 창을 확인하세요. Enter 키를 누르면 종료합니다...")
             await asyncio.to_thread(input)
 
@@ -42,4 +43,6 @@ async def run(year: int, month: int) -> int:
 
 
 if __name__ == "__main__":
-    sys.exit(asyncio.run(run(2026, 5)))
+    _year = int(sys.argv[1]) if len(sys.argv) > 1 else 2026
+    _month = int(sys.argv[2]) if len(sys.argv) > 2 else 5
+    sys.exit(asyncio.run(run(_year, _month)))

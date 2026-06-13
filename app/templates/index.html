@@ -1,0 +1,103 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>매입금 수집</title>
+    <link rel="stylesheet" href="/static/style.css">
+</head>
+<body>
+
+<!-- 상단 네비게이션 -->
+<nav class="top-nav">
+    <button class="nav-btn active" data-tab="collect">매입금 수집</button>
+    <button class="nav-btn" data-tab="settings">설정</button>
+</nav>
+
+<!-- 매입금 수집 탭 -->
+<main id="tab-collect" class="tab-content active">
+    <div class="collect-layout">
+        <!-- 좌측: 수집기간 -->
+        <section class="period-section">
+            <h3>수집기간</h3>
+            <div class="calendar-controls">
+                <button id="cal-prev">&lt;</button>
+                <select id="cal-month"></select>
+                <select id="cal-year"></select>
+                <button id="cal-next">&gt;</button>
+            </div>
+            <table class="calendar" id="calendar-grid">
+                <thead>
+                    <tr>
+                        <th>Su</th><th>Mo</th><th>Tu</th><th>We</th><th>Th</th><th>Fr</th><th>Sa</th>
+                    </tr>
+                </thead>
+                <tbody></tbody>
+            </table>
+            <div class="selected-range">
+                <span id="range-display">날짜를 선택하세요</span>
+            </div>
+        </section>
+
+        <!-- 중앙: 도매사이트 테이블 -->
+        <section class="sites-section">
+            <table class="sites-table">
+                <thead>
+                    <tr>
+                        <th class="col-check"><input type="checkbox" id="check-all" checked></th>
+                        <th class="col-site">도매사이트</th>
+                        <th class="col-amount">매입금</th>
+                        <th class="col-status">진행상황</th>
+                    </tr>
+                </thead>
+                <tbody id="sites-body">
+                    {% for site in sites %}
+                    <tr data-slug="{{ site.slug }}" data-name="{{ site.name }}">
+                        <td class="col-check"><input type="checkbox" class="site-check" checked></td>
+                        <td class="col-site">{{ site.name }}</td>
+                        <td class="col-amount"></td>
+                        <td class="col-status"></td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </section>
+
+        <!-- 우측: 수집시작 -->
+        <section class="action-section">
+            <button id="btn-collect" class="btn-collect">수집시작</button>
+        </section>
+    </div>
+</main>
+
+<!-- 설정 탭 -->
+<main id="tab-settings" class="tab-content">
+    <section class="settings-section">
+        <h3>계정 설정</h3>
+        <table class="accounts-table">
+            <thead>
+                <tr>
+                    <th>사이트</th>
+                    <th>아이디</th>
+                    <th>비번</th>
+                    <th></th>
+                </tr>
+            </thead>
+            <tbody id="accounts-body"></tbody>
+        </table>
+        <div class="accounts-actions">
+            <button id="btn-add-account" class="btn-secondary">행 추가</button>
+            <button id="btn-save-accounts" class="btn-primary">저장</button>
+        </div>
+    </section>
+</main>
+
+<!-- 하단 로그 -->
+<footer class="log-area">
+    <div class="log-header">로그 표시</div>
+    <div id="log-box" class="log-box"></div>
+</footer>
+
+<script src="/static/app.js"></script>
+</body>
+</html>
