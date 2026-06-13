@@ -162,7 +162,7 @@ document.getElementById('check-all').addEventListener('change', (e) => {
 // ── 수집 시작 ────────────────────────────────────
 document.getElementById('btn-collect').addEventListener('click', async () => {
     if (!rangeStart || !rangeEnd) {
-        appendLog('날짜 범위를 선택해주세요 (시작일 + 종료일)');
+        alert('수집 기간을 선택해주세요.\n달력에서 시작일과 종료일을 클릭하세요.');
         return;
     }
 

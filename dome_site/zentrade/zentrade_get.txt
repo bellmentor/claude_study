@@ -1,0 +1,17 @@
+1. 젠트레이드 접속
+ https://www.zentrade.co.kr/shop/main/index.php 
+
+2. 로그인 
+id : <input type="text" name="m_id" style="width: 100px; height: 19px; padding-left: 3px; background-position: initial; background-size: initial; background-repeat: no-repeat; background-attachment: initial; background-origin: initial; background-clip: initial;" title="아이디" tabindex="1" onfocus="main_login_id_chk();" onblur="main_login_id_chk_m();" value="" class="line">
+pw : <input type="password" name="password" style="width: 100px; height: 19px; padding-left: 3px; background-position: initial; background-size: initial; background-repeat: no-repeat; background-attachment: initial; background-origin: initial; background-clip: initial;" title="비밀번호" tabindex="2" onfocus="main_login_pw_chk();" onblur="main_login_pw_chk_m();" class="line">
+로그인버튼 : <input type="image" src="/shop/data/skin/freemart/img/main/header_btn_login.gif" tabindex="3">
+
+3. 마이페이지 의 월별 매출통계 들어가기
+https://www.zentrade.co.kr/shop/mypage/log_sales_month.php?&
+
+
+4. 테이블에서 해당 월에 해당하는 매출금액 가져오기
+테이블 : class="statistics-list" 테이블에서 해당월에 해당하는 매출금액 가져오기
+
+5. ./downloads 폴더에 엑셀로 저장
+ yymmdd_젠트_매입금.xlsx 형식.
