@@ -6,10 +6,13 @@ import asyncio
 import calendar
 import sys
 
+from dome_site.logger import SiteLogger
 from .login import login
 from .orders import fetch_orders
-from .session import MODE, close_session
+from .session import MODE, close_session, get_page
 from .summarize import summarize_purchase
+
+log = SiteLogger("오너클랜")
 
 
 async def run(year: int, month: int) -> int:
@@ -18,15 +21,17 @@ async def run(year: int, month: int) -> int:
     last_day = calendar.monthrange(year, month)[1]
     end = f"{year}-{month:02d}-{last_day:02d}"
 
+    log.flow_start(f"{year}년 {month}월 매입금 수집")
+
     try:
         ok = await login()
         if not ok:
-            print("[오너클랜] 로그인 실패")
             return 1
 
         dest = await fetch_orders(start, end)
-        print(f"\n[오너클랜] 저장 경로: {dest}")
+        log.info(f"저장 경로: {dest}")
 
+        log.step("매입금 합산")
         summarize_purchase(start)
 
         import os
@@ -34,9 +39,15 @@ async def run(year: int, month: int) -> int:
             print("\n[debug] 브라우저 창을 확인하세요. Enter 키를 누르면 종료합니다...")
             await asyncio.to_thread(input)
 
+        log.flow_end()
         return 0
     except Exception as e:
-        print(f"\n[오너클랜] 오류: {e}")
+        log.error(f"오류: {e}")
+        try:
+            page = await get_page()
+            await log.dump_on_error(page, e)
+        except Exception:
+            pass
         return 1
     finally:
         await close_session()

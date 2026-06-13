@@ -8,6 +8,7 @@ from pathlib import Path
 
 import openpyxl
 
+from dome_site.logger import SiteLogger
 from .session import MODE, close_session, get_page
 
 ROOT = Path(__file__).resolve().parents[2]
@@ -16,6 +17,8 @@ SCREENSHOT = Path(__file__).with_name("after_login.png")
 
 LOGIN_URL = "https://ownerclan.com/V2/member/loginform.php"
 SITE_LABEL = "오너클랜"
+
+log = SiteLogger(SITE_LABEL)
 
 
 def load_credentials(site_label: str = SITE_LABEL) -> tuple[str, str]:
@@ -33,21 +36,32 @@ def load_credentials(site_label: str = SITE_LABEL) -> tuple[str, str]:
 
 async def login() -> bool:
     """오너클랜에 로그인한다. 모듈 세션을 재사용하며 종료하지 않는다. 성공 여부 반환."""
+    log.step("로그인", "계정 정보 로딩")
     user, pw = load_credentials()
     page = await get_page()
 
+    log.debug("로그인 페이지 이동")
     await page.goto(LOGIN_URL, wait_until="domcontentloaded")
+    log.debug("아이디/비밀번호 입력")
     await page.fill("#id", user)
     await page.fill("#passwd", pw)
+    log.debug("로그인 버튼 클릭")
     async with page.expect_navigation(wait_until="domcontentloaded"):
         await page.locator("form[name=loginForm] input[type=submit]").click()
 
     url = page.url
     title = await page.title()
-    print(f"[{SITE_LABEL}] 로그인 후 URL  :", url)
-    print(f"[{SITE_LABEL}] 로그인 후 TITLE:", title)
+    log.info(f"로그인 후 URL: {url}")
+    log.info(f"로그인 후 TITLE: {title}")
     await page.screenshot(path=str(SCREENSHOT), full_page=False)
-    return "loginform.php" not in url and "login.php" not in url
+
+    ok = "loginform.php" not in url and "login.php" not in url
+    if ok:
+        log.success("로그인 성공")
+    else:
+        log.error("로그인 실패")
+        await log.dump_on_error(page, RuntimeError("로그인 실패"))
+    return ok
 
 
 async def _standalone() -> int:

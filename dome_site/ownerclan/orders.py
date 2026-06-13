@@ -6,10 +6,13 @@ import asyncio
 from datetime import date
 from pathlib import Path
 
+from dome_site.logger import SiteLogger
 from .session import get_page
 
 ORDER_LIST_URL = "https://ownerclan.com/V2/service/orderList.php"
 DOWNLOAD_DIR = Path(__file__).resolve().parent / "downloads"
+
+log = SiteLogger("오너클랜")
 
 
 async def fetch_orders(start_date: str, end_date: str) -> Path:
@@ -17,13 +20,16 @@ async def fetch_orders(start_date: str, end_date: str) -> Path:
     page = await get_page()
 
     # 1. 주문/배송조회 페이지 이동
+    log.step("주문조회", f"기간: {start_date} ~ {end_date}")
     await page.goto(ORDER_LIST_URL, wait_until="domcontentloaded")
 
     # 2. 날짜 입력
+    log.debug("날짜 입력")
     await page.fill("#startDatepicker", start_date)
     await page.fill("#finishDatepicker", end_date)
 
     # 3. 체크박스: 전체 체크 → 전체 해제 → 필요한 것만 체크
+    log.debug("배송상태 체크박스 설정")
     all_check = page.locator("#all_check")
     if not await all_check.is_checked():
         await all_check.click()
@@ -36,19 +42,26 @@ async def fetch_orders(start_date: str, end_date: str) -> Path:
         await asyncio.sleep(0.2)
 
     # 4. 체크박스마다 getOrderList() 호출되므로 AJAX 완료 대기
+    log.debug("AJAX 응답 대기")
     await page.wait_for_load_state("networkidle")
 
     # 5. 조회하기 클릭 (최대 3회 재시도)
+    log.step("조회하기", "최대 3회 재시도")
     for attempt in range(3):
         await page.locator("img[alt='조회하기']").click()
         try:
             await page.locator("#tblBody tr").first.wait_for(state="attached", timeout=10000)
+            log.debug(f"조회 결과 로딩 완료 (시도 {attempt + 1})")
             break
         except Exception:
-            print(f"[오너클랜] 조회하기 재시도 ({attempt + 1}/3)")
+            log.warn(f"조회하기 재시도 ({attempt + 1}/3)")
+            if attempt == 2:
+                log.error("조회하기 3회 실패")
+                await log.dump_on_error(page, RuntimeError("조회하기 3회 실패"))
             await asyncio.sleep(1)
 
     # 6. 엑셀 다운로드
+    log.step("엑셀 다운로드")
     DOWNLOAD_DIR.mkdir(exist_ok=True)
 
     async with page.expect_download() as download_info:
@@ -58,5 +71,5 @@ async def fetch_orders(start_date: str, end_date: str) -> Path:
     filename = date.today().strftime("%y%m%d") + "_오너클랜_매입금.xlsx"
     dest = DOWNLOAD_DIR / filename
     await download.save_as(str(dest))
-    print(f"[오너클랜] 엑셀 다운로드 완료: {dest}")
+    log.success(f"엑셀 다운로드 완료: {dest}")
     return dest

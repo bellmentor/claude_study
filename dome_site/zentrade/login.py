@@ -8,6 +8,7 @@ from pathlib import Path
 
 import openpyxl
 
+from dome_site.logger import SiteLogger
 from .session import MODE, close_session, get_page
 
 ROOT = Path(__file__).resolve().parents[2]
@@ -15,6 +16,8 @@ ACCOUNT_XLSX = ROOT / "계정정보.xlsx"
 
 LOGIN_URL = "https://www.zentrade.co.kr/shop/main/index.php"
 SITE_LABEL = "젠트"
+
+log = SiteLogger(SITE_LABEL)
 
 
 def load_credentials(site_label: str = SITE_LABEL) -> tuple[str, str]:
@@ -32,14 +35,16 @@ def load_credentials(site_label: str = SITE_LABEL) -> tuple[str, str]:
 
 async def login() -> bool:
     """젠트레이드에 로그인한다. 성공 여부 반환."""
+    log.step("로그인", "계정 정보 로딩")
     user, pw = load_credentials()
     page = await get_page()
 
+    log.debug("로그인 페이지 이동")
     await page.goto(LOGIN_URL, wait_until="domcontentloaded")
 
     # 팝업창 모두 닫기
-    import asyncio as _asyncio
-    await _asyncio.sleep(1)
+    log.debug("팝업창 닫기 처리")
+    await asyncio.sleep(1)
     await page.evaluate("""
         // 입금자 찾기 팝업
         var el = document.getElementById('blnCookie_specialdays');
@@ -55,13 +60,15 @@ async def login() -> bool:
             for btn in buttons:
                 if await btn.is_visible():
                     await btn.click()
-                    await _asyncio.sleep(0.3)
+                    await asyncio.sleep(0.3)
         except Exception:
             pass
-    await _asyncio.sleep(0.3)
+    await asyncio.sleep(0.3)
 
+    log.debug("아이디/비밀번호 입력")
     await page.fill("input[name='m_id']", user)
     await page.fill("input[name='password']", pw)
+    log.debug("로그인 버튼 클릭")
     async with page.expect_navigation(wait_until="domcontentloaded"):
         await page.locator("input[type='image'][src*='btn_login']").click()
 
@@ -69,10 +76,16 @@ async def login() -> bool:
     await page.wait_for_load_state("domcontentloaded")
     url = page.url
     title = await page.title()
-    print(f"[{SITE_LABEL}] 로그인 후 URL  : {url}")
-    print(f"[{SITE_LABEL}] 로그인 후 TITLE: {title}")
-    # login_ok.php = 로그인 성공 처리 페이지, loginform = 로그인 실패
-    return "loginform" not in url.lower()
+    log.info(f"로그인 후 URL: {url}")
+    log.info(f"로그인 후 TITLE: {title}")
+
+    ok = "loginform" not in url.lower()
+    if ok:
+        log.success("로그인 성공")
+    else:
+        log.error("로그인 실패")
+        await log.dump_on_error(page, RuntimeError("로그인 실패"))
+    return ok
 
 
 async def _standalone() -> int:

@@ -7,8 +7,12 @@ from pathlib import Path
 
 import pandas as pd
 
+from dome_site.logger import SiteLogger
+
 DOWNLOADS_DIR = Path(__file__).resolve().parent / "downloads"
 SUMMARY_XLSX = Path(__file__).resolve().parents[1] / "도매_매입금.xlsx"
+
+log = SiteLogger("오너클랜")
 
 
 def summarize_purchase(start_date: str) -> int:
@@ -25,6 +29,7 @@ def summarize_purchase(start_date: str) -> int:
     if not files:
         raise FileNotFoundError("다운로드된 엑셀 파일이 없습니다")
 
+    log.debug(f"엑셀 파일: {files[0].name}")
     df = pd.read_excel(files[0])
     col = [c for c in df.columns if "결제금액" in c][0]
     total = int(df[col].sum())
@@ -49,7 +54,7 @@ def summarize_purchase(start_date: str) -> int:
         result = pd.DataFrame([row])
 
     result.to_excel(SUMMARY_XLSX, index=False)
-    print(f"[오너클랜] {month} 매입금: {total:,}원 → {SUMMARY_XLSX}")
+    log.info(f"{month} 매입금: {total:,}원 → {SUMMARY_XLSX}")
     return total
 
 

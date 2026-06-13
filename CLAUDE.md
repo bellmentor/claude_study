@@ -30,6 +30,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
   - `fetch_orders(start_date, end_date)` — 주문목록 수집. 날짜는 `YYYY-MM-DD` 문자열 또는 `datetime.date`.
   - `logout()`, `close()` — 필요 시.
 - **자격 정보 로딩**: 사이트 모듈이 `계정정보.xlsx` (Sheet1, 컬럼 `사이트/아이디/비번`) 에서 한글 사이트명으로 자기 행을 찾는다. 기준 구현: `dome_site/ownerclan/login.py` 의 `load_credentials()`. 공용 헬퍼는 **두 번째 사이트를 만들 때** 추출 (추측 추상화 금지).
+- **로깅**: 모든 사이트 모듈은 `dome_site/logger.py`의 `SiteLogger`를 사용한다. `from dome_site.logger import SiteLogger`로 import하고 `log = SiteLogger("사이트명")`으로 생성. 기존 `print()` 대신 `log.step()`, `log.info()`, `log.debug()`, `log.warn()`, `log.error()`, `log.success()`를 사용한다. `main.py`에서는 `log.flow_start()`/`log.flow_end()`로 전체 흐름을 감싼다. 에러 발생 시 `await log.dump_on_error(page, error)`로 스크린샷+HTML 덤프를 `dome_site/error_dumps/`에 저장한다.
 - **실행 방식**: 도매처 전체 흐름은 `python -m dome_site.<slug>.main` 으로 실행한다. 개별 오퍼레이션 테스트는 `python -m dome_site.<slug>.login` 등으로 단독 실행. `login.py` 등 개별 테스트가 필요한 모듈만 `if __name__ == "__main__":` 블록을 둔다. 오퍼레이션 파일(orders.py 등)은 순수 함수만 제공하고 단독 실행 블록을 두지 않는다.
 - **메인 웹 호출 계약**: 메인 웹은 `from dome_site.<slug>.<op_module> import <op_func>` 로 호출한다. 따라서 부수효과(브라우저 띄우기, 네트워크 요청)는 import 시점이 아니라 함수 호출 시점에 일어나야 한다.
 - **Playwright 세션 정책 (필수)**: **같은 도매처 안의 모든 오퍼레이션은 같은 브라우저 세션을 공유**한다. 오퍼레이션마다 브라우저를 닫고 다시 띄우면 로그인 쿠키가 유실되므로 **금지**. 다른 도매처로 전환할 때만 세션을 닫는다. 구현 규칙:
@@ -70,10 +71,13 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 - 모든 노트, 폴더 라벨, 커밋 메시지, 그리고 Claude의 설명/응답은 **한국어**로 작성한다. (기존 커밋: `도매사이트 수집 txt 추가`, `도매사이트별 폴더 추가`)
 - 파일을 생성하거나 수정할 때는 **반드시 UTF-8 인코딩**을 사용해 한글이 깨지지 않도록 한다. BOM 없이 저장하고, 줄바꿈 등으로 인한 한글 손상이 의심되면 즉시 다시 확인한다.
 
-## 진행상황 확인 (필수)
+## 진행상황 확인 및 정리 (필수)
 
 - 작업 시작 전 **반드시 `진행상황.txt`와 `web_ui_진행상황.txt`를 읽고 숙지**한다. 어떤 도매처가 완료/미완료인지, Web UI 구현이 어디까지 진행됐는지 파악한 뒤 작업에 들어간다.
-- 작업이 끝나면 `진행상황.txt` 또는 `web_ui_진행상황.txt`를 최신 상태로 업데이트한다.
+- 사용자가 "정리해줘"라고 요청하면 아래 파일들을 업데이트한다:
+  - `진행상황.txt` — 도매처 모듈 변경사항
+  - `web_ui_진행상황.txt` — Web UI 관련 변경사항
+  - `CLAUDE.md` — 새로운 규칙/패턴이 추가된 경우 (다른 PC에서도 적용되어야 하는 것)
 
 ## 작업 진행 방식
 

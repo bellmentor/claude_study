@@ -1,5 +1,12 @@
 # 계정정보 엑셀
 계정정보.xlsx
+~$계정정보.xlsx
+
+# Python 캐시
+__pycache__/
+
+# 에러 덤프 (스크린샷, HTML)
+error_dumps/
 
 # venv
 .venv/
