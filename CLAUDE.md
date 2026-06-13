@@ -54,6 +54,13 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 5. 이후 사용자 지시에 따라 `orders.py` 등 오퍼레이션 모듈을 순서대로 추가.
 6. `app/` 메인 웹이 존재한다면, 사이트 등록 지점에 새 사이트를 노출(등록 방식은 메인 웹 설계 시 정의).
 
+## Web UI 연동 규칙
+
+- 도매처 모듈은 **subprocess로 실행**한다 (`subprocess.Popen([python, "-m", "dome_site.<slug>.main", year, month])`). uvicorn 안에서 Playwright를 직접 import하면 Windows 이벤트 루프 충돌로 실패한다.
+- subprocess 환경변수: `WEBUI=1` (input 대기 건너뛰기), `PYTHONIOENCODING=utf-8` (한글 깨짐 방지).
+- 각 도매처 `main.py`는 CLI 인자(`year month`)를 받을 수 있어야 한다.
+- 타임아웃/재시도는 각 도매처 모듈 내부에서 처리. web은 exit code와 stdout만 수신한다.
+
 ## 엑셀 처리
 
 - 엑셀 파일을 읽고 쓸 때는 **pandas를 우선** 사용한다. openpyxl은 pandas가 처리할 수 없는 경우(셀 서식 등)에만 사용.
