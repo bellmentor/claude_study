@@ -127,6 +127,8 @@ def summarize_purchase(start_date: str) -> int:
 
     result.to_excel(SUMMARY_XLSX, index=False)
     log.info(f"{month_label} 매입금: {total:,}원 → {SUMMARY_XLSX}")
+    # 컴스마트는 주문내역 단일 페이지만 크롤링한다. 주문이 많아 페이지가 나뉘면 누락된다.
+    log.warn("컴스마트 매입금 (페이지 넘어갈시 코드수정필요) — 현재 주문내역 단일 페이지만 크롤링함")
     return total
 
 

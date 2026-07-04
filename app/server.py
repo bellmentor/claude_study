@@ -83,9 +83,16 @@ def send_log(message: str) -> None:
         asyncio.run_coroutine_threadsafe(broadcast_log(msg), _main_loop)
 
 
+# ── 사이트별 진행상황 주의 문구 ────────────────────────────
+# 진행상황 컬럼에 '항상' 표시할 주의 문구(slug 기준). 구현상 한계/미완성을 눈에 띄게 남긴다.
+SITE_NOTES: dict[str, str] = {
+    "coms": "페이지 넘어갈시 코드수정필요",  # 컴스마트: 주문내역 단일 페이지만 크롤링함
+}
+
+
 # ── 도매사이트 목록 파싱 ───────────────────────────────────
 def load_site_list() -> list[dict[str, str]]:
-    """도매사이트_폴더_이름.txt 를 파싱하여 [{name, slug}] 반환."""
+    """도매사이트_폴더_이름.txt 를 파싱하여 [{name, slug, note}] 반환."""
     sites: list[dict[str, str]] = []
     text = SITE_LIST_TXT.read_text(encoding="utf-8")
     for line in text.splitlines():
@@ -98,14 +105,14 @@ def load_site_list() -> list[dict[str, str]]:
             name, slug = line.split(":", 1)
             name, slug = name.strip(), slug.strip()
             if slug:
-                sites.append({"name": name, "slug": slug})
+                sites.append({"name": name, "slug": slug, "note": SITE_NOTES.get(slug, "")})
     return sites
 
 
 # ── 사이트별 subprocess 실행 ──────────────────────────────
 def _run_site_subprocess(slug: str, name: str, year: int, month: int) -> None:
     """별도 스레드에서 python -m dome_site.<slug>.main 을 subprocess로 실행한다."""
-    _collect_status[slug] = {"name": name, "status": "실행 중...", "amount": ""}
+    _collect_status[slug] = {"name": name, "status": "실행 중...", "amount": "", "error": ""}
     send_log(f"[{name}] 수집 시작 ({year}년 {month}월)")
 
     try:
@@ -135,11 +142,13 @@ def _run_site_subprocess(slug: str, name: str, year: int, month: int) -> None:
             _collect_status[slug]["status"] = "완료"
             send_log(f"[{name}] 수집 완료")
         else:
-            _collect_status[slug]["status"] = f"오류 (코드: {proc.returncode})"
+            _collect_status[slug]["status"] = "오류"
+            _collect_status[slug]["error"] = f"오류 (종료코드: {proc.returncode})"
             send_log(f"[{name}] 오류 발생 (종료코드: {proc.returncode})")
 
     except Exception as e:
-        _collect_status[slug]["status"] = f"오류: {e}"
+        _collect_status[slug]["status"] = "오류"
+        _collect_status[slug]["error"] = f"{e}"
         send_log(f"[{name}] 실행 오류: {e}")
 
 

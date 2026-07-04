@@ -179,10 +179,13 @@ document.getElementById('btn-collect').addEventListener('click', async () => {
         return;
     }
 
-    // 테이블 초기화
+    // 테이블 초기화 (메모 컬럼(.site-note)은 유지, 매입금/진행상황/에러만 비운다)
     document.querySelectorAll('#sites-body tr').forEach(tr => {
         tr.querySelector('.col-amount').textContent = '';
-        tr.querySelector('.col-status').textContent = '';
+        const st = tr.querySelector('.col-status .status-text');
+        if (st) st.textContent = '';
+        const er = tr.querySelector('.col-error .error-text');
+        if (er) er.textContent = '';
     });
 
     const btn = document.getElementById('btn-collect');
@@ -238,7 +241,10 @@ function startPolling() {
                 const tr = document.querySelector(`#sites-body tr[data-slug="${slug}"]`);
                 if (tr) {
                     tr.querySelector('.col-amount').textContent = info.amount || '';
-                    tr.querySelector('.col-status').textContent = info.status || '';
+                    const st = tr.querySelector('.col-status .status-text');
+                    if (st) st.textContent = info.status || '';
+                    const er = tr.querySelector('.col-error .error-text');
+                    if (er) er.textContent = info.error || '';
                 }
             }
 

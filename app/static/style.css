@@ -128,11 +128,27 @@ body {
 }
 .col-check { width: 40px; text-align: center !important; }
 .col-site { min-width: 120px; }
-.col-amount { min-width: 100px; }
-.col-status { min-width: 100px; }
+.col-amount { min-width: 90px; }
+.col-status { min-width: 90px; }
+.col-memo { min-width: 160px; }
+.col-error { min-width: 120px; }
 
 .sites-table td.col-check { text-align: center !important; }
 .sites-table input[type="checkbox"] { width: 18px; height: 18px; cursor: pointer; }
+
+/* 메모 컬럼 안내 문구 (항상 표시, 눈에 띄게) */
+.col-memo .site-note {
+    display: block;
+    color: #d32f2f;
+    font-size: 12px;
+    font-weight: 600;
+}
+
+/* 에러 컬럼 (실행 오류 시 채워짐) */
+.col-error .error-text {
+    color: #d32f2f;
+    font-weight: 600;
+}
 
 /* 수집시작 버튼 */
 .action-section { flex: 0 0 auto; padding-top: 30px; }

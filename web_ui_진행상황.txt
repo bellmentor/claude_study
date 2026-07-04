@@ -96,3 +96,16 @@ WS   /ws/logs                : (레거시) 클라이언트 미사용
     - 조치: 서버 로그 버퍼 + 폴링 전달로 변경. WebSocket 클라이언트 코드 제거.
     - 주의: app.js는 정적파일이라 브라우저 캐시 영향 → 적용 후 Ctrl+F5 강력새로고침 필요.
 [ ] UI 세부 조정 (디자인 그림과 비교)
+
+[O] 수집 테이블 컬럼 확장: 메모 / 에러 추가 (2026-07-04)
+    - 테이블 컬럼: [체크] 도매사이트 / 매입금 / 진행상황 / 메모 / 에러
+    - 메모(col-memo): 사이트별 '항상 표시' 고정 안내. server.py 의 SITE_NOTES(slug→문구)에
+      정의. 현재: coms="페이지 넘어갈시 코드수정필요". load_site_list()가 note 필드 부여 →
+      index.html 이 col-memo 에 <span class="site-note">(빨강)로 렌더. 새 사이트 안내는
+      SITE_NOTES 에 slug 한 줄 추가.
+    - 진행상황(col-status): 동적 상태('실행 중...'/'완료'/'오류'). <span class="status-text">.
+    - 에러(col-error): 실행 오류 발생 시 채워짐. _collect_status[slug]['error'] 로 전달,
+      <span class="error-text">(빨강). 정상일 땐 빈칸.
+      · 서브프로세스 종료코드≠0 → status='오류', error='오류 (종료코드: N)'.
+    - app.js 는 상태 갱신 시 .status-text/.error-text 만 건드려 메모(.site-note)는 안 지움.
+    - 주의: app.js/style.css 정적파일 캐시 → 적용 후 Ctrl+F5 강력새로고침 필요.
