@@ -1,0 +1,17 @@
+url : https://b2b-hitdesign.com/
+
+메모 : esop 에서는 엑셀 다운로드가 안 됨. b2b 몰(Cafe24 계열)에서 다운로드한다.
+
+1. 로그인(URL 직접 접속) : https://b2b-hitdesign.com/member/login.html
+   - ID  : input#member_id (name=member_id)
+   - PW  : input#member_passwd (name=member_passwd)
+   - 로그인 버튼 : a.btnLogin ("로그인")
+
+2. 주문조회 : https://b2b-hitdesign.com/myshop/order/list.html
+   - 주문내역 엑셀 다운로드 : button#excel_download_btn ("주문내역 엑셀 다운로드")
+   - (날짜 선택 단계는 프롬프트에 없음. 다운로드된 엑셀의 기간을 확인해 필요 시 보강.)
+
+3. 매입금 계산 (summarize)
+   4-1. '주문일시' 에서 해당 월만 남기고 삭제.
+   4-2. '주문상태' 에 반품/교환/환불(취소류)이 있으면 삭제 (공용 dome_site/order_filters.py).
+   4-3. '실결제금액' 합계 = 해당 월의 매입금.

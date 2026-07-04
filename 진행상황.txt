@@ -102,6 +102,39 @@
 - main.py      : 완료, 동작 확인됨 (python -m dome_site.metaldiy.main 2026 2)
 
 ────────────────────────────────
+[히트가구] dome_site/hit/   (2026-07-04)
+────────────────────────────────
+- session.py   : 완료 (MODE="debug")
+- login.py     : 완료, 동작 확인됨 (Cafe24 계열몰)
+  - LOGIN_URL: https://b2b-hitdesign.com/member/login.html
+  - 셀렉터: #member_id / #member_passwd / a.btnLogin
+  - ★ Cafe24 로그인 주의점 2가지:
+    1) 로그인 버튼은 onclick="MemberAction.login(form)" 로 JS POST → expect_navigation 이
+       놓침. 클릭 후 URL 이 login.html 벗어날 때까지 wait_for_url 로 대기.
+    2) ePlaceholder 때문에 fill() 값이 간헐적으로 빈 값 인식("아이디 항목은 필수 입력값"
+       alert). → 실제 키입력(type)으로 넣고 input_value 검증 + 최대 3회 재시도로 안정화.
+  - dialog(alert) 자동 수락 핸들러 등록(원인 로그).
+- orders.py    : 완료, 동작 확인됨
+  - ORDER_LIST_URL: https://b2b-hitdesign.com/myshop/order/list.html
+  - 엑셀: button#excel_download_btn (날짜 선택 단계 없음 — 다운로드에 최근 다수월 포함,
+    실제로 161건/여러달치 내려옴). 월 필터는 summarize 가 처리.
+  - 다운로드 파일이 HTML 이면 진짜 xlsx 로 변환, 파일 잠김 시 타임스탬프 이름으로 폴백.
+  - 엑셀 파일명: yymmdd_히트가구_매입금.xlsx, 저장: dome_site/hit/downloads/
+- summarize.py : 완료, 동작 확인됨
+  - 컬럼(품목/라인아이템 단위): 주문번호/주문일시/.../실결제금액/.../주문상태코드/주문상태/...
+  - 계산: 1) '주문일시' 해당월 필터  2) '주문상태' 취소류 제외(공용 drop_canceled)
+          3) '실결제금액' 열 단순 합 = 매입금
+  - ★ 중복제거(dedup) 안 함: 품목 여러개면 실결제금액이 행마다 반복되지만, 사용자 수기
+    기준이 '엑셀에서 실결제금액 열을 그대로 다 더하기' 이므로 행 단위로 합산한다.
+    (dedup 을 넣으면 3월이 216,360 으로 나와 틀림. 사용자 검증값은 256,920.)
+  - ★ _find_col 을 '정확일치 우선'으로 개선: 부분포함만 쓰면 '주문상태' 를 찾을 때
+    '주문상태코드'(숫자코드)가 먼저 걸려 취소필터가 무력화됨. 정확일치 1순위로 해결.
+  - 검증(사용자 수기 대조 일치): 2026년 3월 256,920 / 4월 734,760 / 5월 0.
+    · 5월은 두 주문 모두 적립금/예치금 전액결제(실결제금액=0) + 반품 1건 제외 → 0원이 맞음.
+  - 참고: 적립금/예치금 전액결제(실결제금액=0) 주문은 규칙대로 0 으로 합산된다(사용자 확인됨).
+- main.py      : 완료, 동작 확인됨 (python -m dome_site.hit.main 2026 6)
+
+────────────────────────────────
 [미착수 도매처]
 ────────────────────────────────
 - 도매사이트_폴더_이름.txt 참고
