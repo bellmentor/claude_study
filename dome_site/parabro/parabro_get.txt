@@ -1,0 +1,18 @@
+url : https://www.parabro.co.kr/
+
+1. 로그인 : https://www.parabro.co.kr/member/login.php
+   - ID  : input#loginId (name=loginId)
+   - PW  : input#loginPwd (name=loginPwd)
+   - 로그인 버튼 : button[type=submit] (텍스트 "로그인")
+
+2. 주문조회 : https://www.parabro.co.kr/mypage/order_list.php
+   - 조회 시작일 : input#picker2 (name=wDate[], class=js_datepicker)  ex) 2026-06-01
+   - 조회 종료일 : input[name="wDate[]"]:not([id]) (두 번째 wDate[])  ex) 2026-06-30
+   - 조회 버튼   : button.btn_date_check (텍스트 "조회")
+
+3. 엑셀 다운로드 : span.js_order_excel (class="skinbtn point2 btn_review_write js_order_excel", 텍스트 "주문내역 엑셀다운로드")
+
+4. 매입금 계산 (summarize)
+   - 주문항목 중 품목명에 '적립금' 이 포함된 행은 삭제(제외).
+   - 각 상품(행)마다 배송비 3,000원을 더한다.
+   - (상품금액 합계) + (3,000원 × 남은 주문건수) = 해당 월의 매입금.

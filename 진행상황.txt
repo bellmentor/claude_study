@@ -36,6 +36,34 @@
   - 2026년 5월 테스트: 매입금 230,240원 정상 수집
 
 ────────────────────────────────
+[파라브로] dome_site/parabro/
+────────────────────────────────
+- session.py   : 완료 (MODE="debug")
+- login.py     : 완료, 동작 확인됨
+  - LOGIN_URL: https://www.parabro.co.kr/member/login.php
+  - 셀렉터: #loginId / #loginPwd / button[type=submit]:has-text('로그인')
+  - SITE_LABEL="파라브로"
+  - 참고: 로그인 성공 후 password_change.php(비밀번호 변경 안내)로 리다이렉트되나
+    로그인 자체는 성공(주문조회 접근 가능). 향후 강제 변경 페이지로 막히면 처리 추가 필요.
+- orders.py    : 완료, 동작 확인됨
+  - ORDER_LIST_URL: https://www.parabro.co.kr/mypage/order_list.php
+  - 조회기간: #picker2(시작) / input[name="wDate[]"]:not([id])(종료)
+    → js_datepicker 가 readonly 라 value 직접 주입 + input/change 이벤트 발생시킴
+  - 조회 버튼: button.btn_date_check / 엑셀: span.js_order_excel
+  - 엑셀 파일명: yymmdd_파라브로_매입금.xlsx, 저장: dome_site/parabro/downloads/
+- summarize.py : 완료, 동작 확인됨
+  - ★ 파라브로 '엑셀다운로드' 는 확장자만 .xls 일 뿐 실제 내용은 HTML 테이블
+    (application/vnd.ms-excel). 파일 첫 바이트로 판별해 pd.read_html 로 읽는다.
+    → 이 때문에 lxml 의존성 추가됨 (아래 주의사항 참고).
+  - 컬럼: 주문날짜/주문상태/주문번호/수령자이름/.../상품명/수량/상품금액/...
+  - 계산: '상품명'에 '적립금' 포함 행 제외 → (상품금액 합계) + (3,000원 × 배송건수)
+  - 배송비는 '송장번호 단위'로 1번만 매긴다. 같은 송장번호로 묶인 주문은 배송 1건.
+    송장번호가 빈 행(배송준비 중)은 아직 묶을 수 없어 각각 1건으로 센다.
+  - 2026년 6월 테스트: 상품금액 42,460 + 배송비 18,000(송장 6건) = 매입금 60,460원 정상 수집
+    (전체 7행 중 동일 송장 2건이 배송 1건으로 묶임)
+- main.py      : 완료, 동작 확인됨 (python -m dome_site.parabro.main 2026 6)
+
+────────────────────────────────
 [미착수 도매처]
 ────────────────────────────────
 - 도매사이트_폴더_이름.txt 참고
@@ -58,5 +86,6 @@
 [주의사항]
 ────────────────────────────────
 - 계정정보.xlsx는 .gitignore 대상이므로 새 PC에서는 직접 생성 필요 (Sheet1, 컬럼: 사이트/아이디/비번)
-- venv도 git에 포함 안 됨. 새 PC에서: python -m venv .venv → pip install openpyxl playwright pandas → playwright install
+- venv도 git에 포함 안 됨. 새 PC에서: python -m venv .venv → pip install openpyxl playwright pandas lxml → playwright install
+  (lxml 은 파라브로처럼 '엑셀'을 HTML 테이블로 내려주는 사이트를 pd.read_html 로 읽기 위해 필요)
 - git clean -dfx 하면 .gitignore 대상(venv, 계정정보.xlsx)도 전부 삭제됨. -df만 쓸 것.
