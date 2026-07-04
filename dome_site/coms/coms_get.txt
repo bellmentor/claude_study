@@ -1,0 +1,18 @@
+url : https://comsmart.co.kr/cmart/
+
+메모 : 아직 주문 내역이 적음. 주문수가 많아 여러 페이지로 넘어가면 orders.py 에
+       페이지네이션 순회를 추가해야 함(현재 단일 페이지 크롤링).
+
+1. 로그인(URL 직접 접속) : https://comsmart.co.kr/cmart/bbs/login.php?url=%2Fcmart%2F
+   - ID  : input#login_id (name=mb_id)
+   - PW  : input#login_pw (name=mb_password)
+   - 로그인 버튼 : input[type=image] (src=../img/login_btn.png)
+
+2. 주문내역조회 : https://comsmart.co.kr/cmart/shop/orderinquiry.php
+   - 엑셀 다운로드 없음 → 주문 테이블을 직접 크롤링한다.
+   - 테이블 : table#tblk
+   - 해당월 찾을 컬럼 : '주문일시'
+   - 입금액 찾을 컬럼 : '입금액'
+
+3. 매입금 계산 (summarize)
+   - '주문일시' 해당월 필터 → '주문상태' 취소류 제외(공용) → '입금액' 합계 = 매입금.
