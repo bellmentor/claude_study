@@ -1,4 +1,4 @@
-"""파라브로 전체 흐름: 로그인 → 주문조회/엑셀 다운로드 → 매입금 합산."""
+"""철물박사 전체 흐름: 로그인 → 주문조회/엑셀 다운로드 → 매입금 합산."""
 
 from __future__ import annotations
 
@@ -12,11 +12,11 @@ from .orders import fetch_orders
 from .session import MODE, close_session, get_page
 from .summarize import summarize_purchase
 
-log = SiteLogger("파라브로")
+log = SiteLogger("철물박사")
 
 
 async def run(year: int, month: int) -> int:
-    """파라브로 매입금 집계 전체 실행."""
+    """철물박사 매입금 집계 전체 실행."""
     start = f"{year}-{month:02d}-01"
     last_day = calendar.monthrange(year, month)[1]
     end = f"{year}-{month:02d}-{last_day:02d}"
@@ -32,7 +32,7 @@ async def run(year: int, month: int) -> int:
         log.info(f"저장 경로: {dest}")
 
         log.step("매입금 합산")
-        summarize_purchase(start, end)
+        summarize_purchase(start)
 
         import os
         if MODE == "debug" and not os.environ.get("WEBUI"):

@@ -1,0 +1,24 @@
+url : https://www.metaldiy.com/
+
+메모 : 메인에서 로그인 버튼을 누르면 새 창(팝업)에서 로그인해야 해 불편하다.
+       → 팝업 로그인 URL 로 바로 접속해 로그인한 뒤 메인으로 이동한다.
+
+1. 로그인(팝업 URL 직접 접속) : https://www.metaldiy.com/login/popupLogin.do?popupYn=Y
+   - ID  : input#loginId (label for="loginId")
+   - PW  : input#loginPw (name=loginPw)
+   - 로그인 버튼 : input[type=image][title="로그인"] (src=/images/member/btn_login2.gif)
+   - 클릭 후 잠시 대기.
+   - 메인 페이지 이동 : https://www.metaldiy.com/main/mainView.do
+   - 로그인 확인 : a[href*="logout.do"] ("로그아웃" 링크) 존재 여부
+
+2. 주문배송조회 : https://www.metaldiy.com/mypage/orderList.do
+   - 조회기간: 날짜 클릭이 어려워 '6개월' 라디오 선택 후 엑셀에서 월 필터링.
+     · 6개월 라디오 : input#date_term_186 (name=date_term, value=-186)
+   - 조회 버튼 : input[type=image][alt="검색"] (class=search)
+   - 엑셀 다운로드 : a#excelMultiDown (class=excel, "엑셀다운로드")
+
+3. 매입금 계산 (summarize)
+   3-1. '주문일' 에서 해당 월만 남기고 나머지 삭제.
+   3-2. 본인이 주문한 적립금 내역 삭제 : (수령자명 == '최종훈') AND (결제방법 == '무통장입금') 인 행.
+   3-3. '주문상태' 가 '배송중' 인 행만 남기고 모두 삭제.
+   3-4. 남은 행의 '결제금액' 합계 = 해당 월의 매입금.

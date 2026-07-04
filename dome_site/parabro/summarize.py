@@ -1,9 +1,11 @@
 """파라브로 매입금 합산 → 도매_매입금.xlsx 에 기록.
 
 계산 규칙 (parabro_get.txt 기준):
+  - 파라브로는 앞뒤로 넉넉히 넓힌 기간으로 조회했으므로, 먼저 '주문날짜' 가
+    사용자가 선택한 기간(start_date~end_date) 안인 행만 남긴다.
   - 품목명에 '적립금' 이 포함된 행은 제외한다.
-  - 각 상품(행)마다 배송비 3,000원을 더한다.
-  - (상품금액 합계) + (3,000원 × 남은 주문건수) = 해당 월의 매입금.
+  - 같은 송장번호는 한 번의 배송이므로 배송비(3,000원)를 송장 단위로 1번만 더한다.
+  - (상품금액 합계) + (3,000원 × 배송건수) = 해당 월의 매입금.
 """
 
 from __future__ import annotations
@@ -14,6 +16,7 @@ from pathlib import Path
 import pandas as pd
 
 from dome_site.logger import SiteLogger
+from dome_site.order_filters import drop_canceled
 
 DOWNLOADS_DIR = Path(__file__).resolve().parent / "downloads"
 SUMMARY_XLSX = Path(__file__).resolve().parents[1] / "도매_매입금.xlsx"
@@ -60,10 +63,16 @@ def _to_int(value) -> int:
     return int(digits) if digits else 0
 
 
-def summarize_purchase(start_date: str) -> int:
+def _to_yyyymmdd(value) -> int:
+    """날짜류 값에서 앞 8자리 숫자(YYYYMMDD)를 정수로 추출. 예: '2026/06/21' → 20260621."""
+    digits = "".join(ch for ch in str(value) if ch.isdigit())
+    return int(digits[:8]) if len(digits) >= 8 else 0
+
+
+def summarize_purchase(start_date: str, end_date: str) -> int:
     """최신 엑셀에서 매입금을 계산하고 도매_매입금.xlsx 에 기록한다. 매입금(원) 반환.
 
-    start_date: 조회 시작일 (YYYY-MM-DD). 여기서 월을 추출한다.
+    start_date, end_date: 사용자가 선택한 기간 (YYYY-MM-DD). '주문날짜' 필터와 월 라벨에 사용.
     """
     files = sorted(
         [f for f in DOWNLOADS_DIR.glob("*.xlsx") if not f.name.startswith("~")],
@@ -76,6 +85,22 @@ def summarize_purchase(start_date: str) -> int:
     log.debug(f"엑셀 파일: {files[0].name}")
     df = _read_excel(files[0])
     log.debug(f"엑셀 컬럼: {list(df.columns)}")
+
+    # 주문날짜 컬럼: 넓게 조회했으므로 선택 기간만 남긴다.
+    date_col = _find_col(df, ["주문날짜", "주문일자", "주문일"])
+    if date_col is not None:
+        start_i = _to_yyyymmdd(start_date)
+        end_i = _to_yyyymmdd(end_date)
+        n0 = len(df)
+        d = df[date_col].map(_to_yyyymmdd)
+        df = df[(d >= start_i) & (d <= end_i)]
+        log.info(f"선택 기간({start_date}~{end_date}) 필터: {n0}건 → {len(df)}건")
+    else:
+        log.warn("주문날짜 컬럼을 찾지 못해 기간 필터를 건너뜁니다")
+
+    # 주문상태에 취소/반품/교환/환불 이 포함된 주문은 제외 (공용 필터)
+    status_col = _find_col(df, ["주문상태", "배송상태", "상태"])
+    df = drop_canceled(df, status_col, log=log)
 
     # 품목명 컬럼: '적립금' 행 제외에 사용
     name_col = _find_col(df, ["상품명", "품목", "상품", "제품명"])
@@ -145,5 +170,13 @@ def summarize_purchase(start_date: str) -> int:
 
 
 if __name__ == "__main__":
+    import calendar
+
     _start = sys.argv[1] if len(sys.argv) > 1 else "2026-06-01"
-    summarize_purchase(_start)
+    if len(sys.argv) > 2:
+        _end = sys.argv[2]
+    else:
+        _y, _m = int(_start[:4]), int(_start[5:7])
+        _last = calendar.monthrange(_y, _m)[1]
+        _end = f"{_y}-{_m:02d}-{_last:02d}"
+    summarize_purchase(_start, _end)
