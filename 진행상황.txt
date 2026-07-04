@@ -226,6 +226,26 @@
 - main.py      : 완료, 동작 확인됨 (python -m dome_site.cokorea.main 2026 5)
 
 ────────────────────────────────
+[JTC코리아] dome_site/jtc/   (2026-07-05, 파라브로와 동일 몰 솔루션)
+────────────────────────────────
+- session.py   : 완료 (MODE="debug")
+- login.py     : 완료, 동작 확인됨 (파라브로와 동일: #loginId/#loginPwd/button[type=submit])
+  - LOGIN_URL: https://www.1001094.com/member/login.php
+- orders.py    : 완료, 동작 확인됨
+  - ★ 엑셀 다운로드 없음 → 주문 테이블(.mypage_table_type) 직접 크롤링.
+    ORDER_LIST_URL: https://www.1001094.com/mypage/order_list.php
+  - ★ 기간: 6개월 버튼이 없음(0/7/15/30/90/365만). 오래된 달 누락 방지 위해 '1년'(data-value=365)
+    사용. 조회 버튼: button.btn_date_check.
+  - 각 주문행에서 날짜(YYYY/MM/DD)와 첫 금액(NN,NNN원)을 정규식으로 추출.
+  - ★ 페이지네이션 구현됨: .pagination 의 ul li a href(page/wDate)를 urljoin 으로 모아 전 페이지 순회.
+  - 저장: [날짜, 가격] → yymmdd_JTC코리아_매입금.xlsx, dome_site/jtc/downloads/
+- summarize.py : 완료, 동작 확인됨
+  - '날짜' 해당월 필터 → 각 주문당 (가격 + 배송비 3,500) 합산. (부가세 없음)
+  - 검증: 2026-03 = 359,600(7건) / 04 = 132,600(5건) / 05 = 125,800(6건) / 06 = 347,500(11건).
+    (30건이 3페이지에 걸쳐 크롤링됨, 수기 검산 일치)
+- main.py      : 완료, 동작 확인됨 (python -m dome_site.jtc.main 2026 6)
+
+────────────────────────────────
 [미착수 도매처]
 ────────────────────────────────
 - 도매사이트_폴더_이름.txt 참고

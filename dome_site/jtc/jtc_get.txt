@@ -1,0 +1,20 @@
+url : https://www.1001094.com/   (JTC코리아, 파라브로와 동일 몰 솔루션)
+
+1. 로그인 : https://www.1001094.com/member/login.php
+   - ID  : input#loginId (name=loginId)
+   - PW  : input#loginPwd (name=loginPwd)
+   - 로그인 버튼 : button[type=submit] (텍스트 "로그인")
+
+2. 주문관리 : https://www.1001094.com/mypage/order_list.php
+   - 엑셀 다운로드 없음 → 주문 테이블(.mypage_table_type) 직접 크롤링.
+   - 기간 버튼: button[data-value] (0=오늘,7,15,30=1개월,90=3개월,365=1년) ※ 6개월 없음
+     → 오래된 달 누락 방지 위해 '1년'(data-value=365) 사용.
+   - 조회 버튼: button.btn_date_check
+   - 날짜: 행 텍스트의 YYYY/MM/DD (예: 2026/06/29)
+   - 가격: 행의 <strong>15,600원</strong> (첫 'NN,NNN원')
+   - ★ 페이지네이션 필수: .pagination 의 ul li a href(page/wDate 파라미터)를 모아 전 페이지 순회.
+
+3. 매입금 계산 (summarize)
+   - '날짜' 해당월 필터.
+   - 각 주문당 (가격 + 배송비 3,500원). (부가세 없음)
+   - 모두 합하면 해당 월의 매입금.
