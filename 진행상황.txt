@@ -162,6 +162,47 @@
 - main.py      : 완료, 동작 확인됨 (python -m dome_site.coms.main 2026 4)
 
 ────────────────────────────────
+[식자재코리아] dome_site/sic/   (2026-07-04)
+────────────────────────────────
+- session.py   : 완료 (MODE="debug", accept_downloads=True)
+- login.py     : 완료, 동작 확인됨
+  - LOGIN_URL: https://www.sikjajekr.com/store/member/login.php
+  - 셀렉터: input[name=id] / input[name=passwd] / button.login-btn
+  - SITE_LABEL="식자재코리아"
+- orders.py    : 완료, 동작 확인됨
+  - ORDER_LIST_URL: https://www.sikjajekr.com/order/order_list.php?mode=order
+  - '6개월' 기간 버튼(#dayButton6) → 조회(input.search[value=조회]) → 거래원장 다운로드
+    (input.button3[value='거래원장 다운로드']).
+    (기간 버튼: dayButton5=2개월, dayButton6=6개월, dayButton9=전체)
+  - ★ 다운로드 클릭 시 확인 팝업(dialog) 뜸 → page.on('dialog', accept) 로 자동 수락.
+  - 다운로드는 확장자만 .xls 이고 실제 HTML 테이블(첫 행 헤더) → read_html(header=0) 로
+    진짜 xlsx 변환 저장. 파일 잠김 시 타임스탬프 이름 폴백.
+  - 파일명: yymmdd_식자재코리아_매입금.xlsx, 저장: dome_site/sic/downloads/
+- summarize.py : 완료, 동작 확인됨
+  - 거래원장 컬럼: 구분/주문번호/일자/수령자명/상품코드/상품명/출고량/거래단가/거래액/주문일계
+  - 계산: 1) '일자' 해당월 필터(헤더행·'일계' 소계행은 일자 없어 자동 제외)
+          2) '구분' 취소류 제외(공용 drop_canceled: 관리자취소/취소/반품/교환/환불)
+          3) 비매입행 제외: '차감'(주문 적립금 사용)·'일계' 등은 매입이 아니라 합산에서 뺌
+          4) '거래액' 합계 = 매입금 (주문마다 '배송비'행 거래액 3500 도 포함)
+  - ★★ 10배 버그 수정(2026-07-04): 거래액이 float('12440.0')로 오는데 _to_int 가 문자열에서
+    숫자만 뽑아 '.0'의 0까지 붙여 124400(=10배)로 만들던 버그. 사용자가 "0 하나 더 붙는다"고
+    지적해서 발견. _to_int 를 isinstance(float) 처리 + 소수점 뒤 버림으로 수정.
+    → 같은 잠재 버그가 parabro/metaldiy/hit/coms _to_int 에도 있어 전부 동일 수정(검증값 불변).
+  - 검증(사용자 수기 대조): 2026-04 = 460,230원, 2026-05 = 380,750원 (정확 일치).
+    2026-03 = 487,190원(사용자 512,040과 24,850 차이 → 그 사이 취소/반품 등 데이터 변동 추정).
+    전체 흐름 exit 0.
+  - ★ 한계(6개월 조회): '6개월'만 내려오므로 6달 이상 지난 달을 수집하면 앞부분 누락 가능
+    (정상 사용에선 거의 문제 없음). Web UI 메모 컬럼(SITE_NOTES['sic'])에 표기함.
+    더 오래된 달이 필요하면 dayButton9='전체' 로 바꾸면 됨.
+- main.py      : 완료, 동작 확인됨 (python -m dome_site.sic.main 2026 5)
+
+────────────────────────────────
+[삭제됨] 도매토피아 (doto)  — 2026-07-04
+────────────────────────────────
+- "안 할 예정"이라 도매사이트_폴더_이름.txt 에서 줄 제거 + dome_site/doto/ 폴더 삭제.
+  Web UI 목록에서도 자동 제외됨.
+
+────────────────────────────────
 [미착수 도매처]
 ────────────────────────────────
 - 도매사이트_폴더_이름.txt 참고

@@ -1,0 +1,23 @@
+url : https://www.sikjajekr.com/main.php
+
+메모 : 거래원장 다운로드는 확장자만 .xls, 실제는 HTML 테이블(첫 행이 헤더).
+       다운로드 클릭 시 확인 팝업(dialog) 뜸 → 자동 수락 처리함.
+
+1. 로그인 : https://www.sikjajekr.com/store/member/login.php
+   - ID  : input[name=id]
+   - PW  : input[name=passwd]
+   - 로그인 버튼 : button.login-btn ("로그인")
+
+2. 주문관리(거래원장) : https://www.sikjajekr.com/order/order_list.php?mode=order
+   - 기간 '6개월' 선택 : input#dayButton6 (value=6개월)
+     · 기간 버튼: dayButton5=2개월, dayButton6=6개월, dayButton9=전체
+   - 조회 버튼 : input.search[value="조회"] (submit)
+   - 거래원장 다운로드 : input.button3[value="거래원장 다운로드"]
+     · 클릭 시 확인 팝업 뜸 → dialog 자동 수락 후 다운로드.
+
+3. 매입금 계산 (summarize)  ※ 거래원장 컬럼: 구분/주문번호/일자/수령자명/상품코드/상품명/출고량/거래단가/거래액/주문일계
+   4-1. '일자' 해당월 필터 (헤더행·'일계' 소계행은 일자 없어 자동 제외).
+   4-2. '구분' 에 관리자 취소/반품/교환/환불/취소 있으면 제외 (공용 order_filters).
+   4-2b. '구분'='차감'(주문 적립금 사용)·'일계' 등 비매입행 제외 (거래액을 매입으로 세면 안 됨).
+   4-3. '거래액' 합계 = 매입금 (주문마다 '배송비' 행(거래액 3500)도 포함해서 합산).
+   ※ 거래액이 float('12440.0')로 오므로 _to_int 는 소수점 뒤를 버려야 함(안 그러면 10배됨).

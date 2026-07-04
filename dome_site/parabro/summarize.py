@@ -58,7 +58,10 @@ def _to_int(value) -> int:
     """'6,200' / '6,200원' / 6200.0 등 다양한 표기를 정수로 변환. 실패 시 0."""
     if pd.isna(value):
         return 0
-    s = str(value)
+    if isinstance(value, (int, float)):
+        return int(round(float(value)))
+    # 소수점 뒤는 버린다 ('12440.0' → '12440'). 안 그러면 '.0'의 0까지 붙어 10배가 된다.
+    s = str(value).split(".")[0]
     digits = "".join(ch for ch in s if ch.isdigit())
     return int(digits) if digits else 0
 
