@@ -1,0 +1,26 @@
+url : https://79dome.com/   (친구도매, 영카트/그누보드 계열)
+
+1. 로그인 : https://79dome.com/bbs/login.php
+   - ID  : input#mb_id (name=mb_id)
+   - PW  : input#mb_password (name=mb_password)
+   - 로그인 버튼 : button[type=submit] (텍스트 "로그인")
+
+2. 구매내역(주문내역조회) : https://79dome.com/shop/orderinquiry.php
+   - 기간 직접입력 가능: input[name=date1](시작), input[name=date2](종료)  YYYY-MM-DD
+     → URL 파라미터로도 조회됨: orderinquiry.php?date1=YYYY-MM-DD&date2=YYYY-MM-DD
+   - 엑셀파일다운로드 : button#excel_orders (onclick btn_orders_xls_down())
+     · 클릭 시 confirm 팝업 뜸 → 자동 수락. ../page/excel_order.php 로 POST 다운로드.
+     · 다운로드는 확장자만 .xls 이고 실제 HTML 테이블(첫 행 헤더) → read_html(header=0) 변환.
+   - 엑셀 컬럼: 주문일자/주문번호/받는사람/연락처1/연락처2/우편번호/주소/상품명/수량/가격/
+              배송비/합계액/배송메세지/상태/택배사/송장번호/자체관리번호
+
+3. 매입금 계산 (summarize)  ※ 사용자 지시: "합계액. 적립금 지우고. 송장 같으면 배송비 한번만."
+   - '주문일자' 해당월 필터.
+   - '상품명'에 '적립금' 포함 행 제외.
+   - '상태'에 취소/반품/교환/환불 있으면 제외 (공용 order_filters).
+   - '상태'에 미결제/입금대기/미입금/결제대기(매입 미확정) 있으면 제외 (UNPAID_KEYWORDS).
+   - 매입금 = 상품금액 + 배송비
+     · 상품금액 = 각 라인 (가격 × 수량) 합.
+     · 배송비 = '송장번호' 단위로 1번만(같은 송장=배송 1건).
+       송장이 비거나 '0'(미출고)이면 주문번호로 대체 → 미출고끼리 '0'으로 뭉쳐 과소계산되는 것 방지.
+   ※ '합계액' 열은 주문 총액이 옵션마다 반복돼 그대로 합하면 중복됨 → 위처럼 재구성.
