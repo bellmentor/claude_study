@@ -1,0 +1,19 @@
+url : https://ds1008.com/   (바나나하우스 / 씨오코리아, Cafe24 계열몰)
+
+1. 로그인 : https://ds1008.com/member/login.html
+   - ID  : input#member_id (name=member_id)
+   - PW  : input#member_passwd (name=member_passwd)
+   - 로그인 버튼 : button[alt="로그인"] (텍스트 "Log in")  ※ Cafe24 JS 로그인
+   - 로그인 후 주문조회(https://ds1008.com/myshop/order/list.html) 접근 가능하면 성공.
+
+2. 주문조회 : https://ds1008.com/myshop/order/list.html
+   - 엑셀 다운로드 없음 → 주문목록(.orderList) 직접 크롤링.
+   - 기간 '6개월' 선택 : a.btnNormal[days="180"]  (days: 00=오늘,30=1개월,90=3개월,180=6개월)
+   - 주문 날짜 : span.date[title="주문일자"]  (예: 2026-06-17)
+   - 판매가   : span.price[title="판매가"]   (예: 6,200원)  ※ 날짜와 1:1
+   - ★ 페이지네이션 필수: .xans-myshop-orderhistorypaging 의 ol li a href 를 모아 전 페이지 순회.
+
+3. 매입금 계산 (summarize)
+   - '날짜' 해당월 필터.
+   - 각 주문당 (판매가 + 배송비 3,000원) × 1.1(부가세), 반올림.
+   - 모두 합하면 해당 월의 매입금.

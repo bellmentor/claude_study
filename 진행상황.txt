@@ -203,6 +203,29 @@
   Web UI 목록에서도 자동 제외됨.
 
 ────────────────────────────────
+[코코리아] dome_site/cokorea/   (2026-07-05, 바나나하우스/씨오코리아 Cafe24몰)
+────────────────────────────────
+- session.py   : 완료 (MODE="debug")
+- login.py     : 완료, 동작 확인됨 (Cafe24, 히트가구와 동일 패턴)
+  - LOGIN_URL: https://ds1008.com/member/login.html
+  - 셀렉터: #member_id / #member_passwd / button[alt='로그인'](텍스트 'Log in')
+  - ePlaceholder 대비 type()+검증+3회 재시도, dialog 자동수락, 로그인 후 주문조회 접근 확인.
+- orders.py    : 완료, 동작 확인됨
+  - ★ 엑셀 다운로드 없음 → 주문목록(.orderList) 직접 크롤링.
+    ORDER_LIST_URL: https://ds1008.com/myshop/order/list.html
+  - '6개월' 버튼(a.btnNormal[days='180']) 클릭 후 크롤링. (days: 00/30/90/180)
+    ※ 처음 3개월(days=90)로 했다가, 3달 지난 달이 0으로 나와 6개월로 변경(2026-07-05).
+  - 날짜: span.date[title='주문일자'] / 판매가: span.price[title='판매가'] (날짜와 1:1).
+  - ★ 페이지네이션 구현됨: .xans-myshop-orderhistorypaging 의 ol li a href(날짜범위+page 포함)
+    를 모아 전 페이지 순회. (컴스마트와 달리 코드수정 불필요)
+  - Web UI 메모(SITE_NOTES['cokorea']): '조회 6개월 범위' (6달 지난 달 누락 주의).
+  - 저장: [날짜, 판매가] → yymmdd_코코리아_매입금.xlsx, dome_site/cokorea/downloads/
+- summarize.py : 완료, 동작 확인됨
+  - '날짜' 해당월 필터 → 각 주문당 (판매가 + 배송비 3,000) × 1.1(부가세) 반올림 → 합산.
+  - 검증: 2026-03 = 36,278 / 04 = 6,996 / 05 = 26,004 / 06 = 10,120 (수기 검산 일치).
+- main.py      : 완료, 동작 확인됨 (python -m dome_site.cokorea.main 2026 5)
+
+────────────────────────────────
 [미착수 도매처]
 ────────────────────────────────
 - 도매사이트_폴더_이름.txt 참고
