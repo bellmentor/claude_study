@@ -1,0 +1,34 @@
+url : https://www.3mro.co.kr/
+
+1. 로그인 : https://www.3mro.co.kr/bbs/login.php  (그누보드 계열)
+   - 아이디 : input[name=mb_id]
+   - 비밀번호 : #mb_password (name=mb_password)
+   - 로그인 버튼 : button[type=submit]:has-text('로그인')
+   - 로그인 성공 시 메인(https://www.3mro.co.kr/)으로 이동 (URL 에 login.php 없으면 성공)
+
+2. 주문/배송조회 : https://www.3mro.co.kr/shop/mypage.php
+   - 조회기간 시작 : #fr_date  (name=fr_date, YYYY-MM-DD 텍스트 입력 가능)
+   - 조회기간 끝 : #to_date  (name=to_date)
+   - 주문상태 체크박스 (모두 체크해서 조회, 취소류는 목록에 없어 자동 제외) :
+       #od_status1 = 입금확인, #od_status2 = 배송준비중, #od_status3 = 배송중, #od_status4 = 배송완료
+       ※ 그누보드 커스텀 UI 라 실제 input 이 화면 밖(뷰포트 밖)에 숨겨져 있어 클릭이 안 됨
+         → JS 로 checked=true 설정 + change 이벤트 발생시킴
+   - 조회 버튼 : input[type=submit][value='검색']
+
+3. 엑셀 다운로드 (★ 새 창=팝업으로 뜸)
+   - 엑셀다운로드 버튼 : button:has-text('엑셀다운로드')  (onclick=excel_down() → 새 창 open)
+   - 새 창에서 '3MRO양식' 클릭해야 실제 다운로드 : a[onclick*="downorder('3mro')"]
+   - ★ 다운로드 파일은 확장자만 .xlsx, 실제 내용은 구형 .xls 바이너리(OLE2, 매직 d0cf11e0)
+     → orders._normalize_download() 가 진짜 xlsx 로 변환 후 저장. xlrd 패키지 필요 (pip install xlrd)
+     → ★★ 이 .xls 는 xlrd 가 'Workbook corruption' 으로 막는 경우가 있음(월마다 다름).
+       pd.read_excel(engine='xlrd') 로는 실패하거나 값을 잘못 읽어(예: 6월이 142,530 로 뻥튀기됨)
+       → _read_xls_ole2() 가 xlrd.open_workbook(ignore_workbook_corruption=True) 로 직접 파싱함.
+
+4. 매입금 계산 (프롬프트: "(가격 × 개수) + 배송비(3천원)")
+   - 엑셀 컬럼 : 주문일자/개인주문번호/주문번호/주문자명/.../상품명/옵션1/옵션2/수량/가격/배송비/
+                배송메세지/주문상태/택배회사/송장번호/발송일/상품번호
+   - '주문일자' 에서 해당 월만 남김
+   - '주문상태' 취소류(취소/반품/교환/환불) 제외 (공용 drop_canceled)
+   - 매입금 = 상품금액(Σ 가격×수량) + 배송비(송장번호 단위 1건당 3,000원)
+   - ★ '배송비' 컬럼 값은 '선불'(텍스트)이라 금액 아님 → 쓰지 않고 고정 3,000원 적용
+   - 검증(2026): 3월 53,230원(2건) / 4월 41,760원(2건) / 5월 0원(주문 없음)

@@ -278,6 +278,41 @@
 - main.py      : 완료, 동작 확인됨 (python -m dome_site.79dome.main 2026 5)
 
 ────────────────────────────────
+[3MRO] dome_site/3mro/   (2026-07-05, 그누보드 계열)
+────────────────────────────────
+- session.py   : 완료 (MODE="debug", accept_downloads=True). get_context() 추가(팝업 대기용).
+- login.py     : 완료, 동작 확인됨
+  - LOGIN_URL: https://www.3mro.co.kr/bbs/login.php
+  - 셀렉터: input[name=mb_id] / #mb_password / button[type=submit]:has-text('로그인')
+  - 로그인 후 메인(/)으로 이동, URL 에 login.php 없으면 성공. SITE_LABEL="3MRO"
+- orders.py    : 완료, 동작 확인됨
+  - ORDER_LIST_URL: https://www.3mro.co.kr/shop/mypage.php
+  - 날짜 직접입력: #fr_date / #to_date 에 해당월 1일~말일 기입(readonly 대비 JS 주입 폴백).
+  - ★ 주문상태 체크박스(#od_status1~4 = 입금확인/배송준비중/배송중/배송완료) 전체 체크.
+    그누보드 커스텀 UI 라 실제 input 이 뷰포트 밖에 숨겨져 check()/force 가 다 실패 →
+    JS 로 checked=true + change 이벤트로 처리. (취소류는 목록에 없어 자동 제외)
+  - 조회: input[type=submit][value='검색']
+  - ★ 엑셀 다운로드가 새 창(팝업)으로 뜸: button:has-text('엑셀다운로드')(onclick=excel_down)
+    → context.expect_page() 로 팝업 잡고 → 팝업의 a[onclick*="downorder('3mro')"] 클릭 →
+    expect_download. (기존 사이트 중 팝업 다운로드는 3MRO 가 처음)
+  - ★ 다운로드는 확장자만 .xlsx, 내용은 구형 .xls 바이너리(OLE2, 매직 d0cf11e0).
+    _normalize_download() 가 매직 판별해서 진짜 xlsx 로 변환(HTML/PK/OLE2 3종 처리) → xlrd 필요.
+    ★★ 2026-07-05 버그수정: 이 .xls 는 xlrd 가 'Workbook corruption' 으로 막는 달이 있어
+    pd.read_excel(engine='xlrd') 가 실패하거나 값을 잘못 읽음(6월이 142,530 으로 뻥튀기됨).
+    → _read_xls_ole2() 가 xlrd.open_workbook(ignore_workbook_corruption=True) 로 직접 파싱하게 교체.
+  - 파일명: yymmdd_3MRO_매입금.xlsx, 저장: dome_site/3mro/downloads/
+- summarize.py : 완료, 동작 확인됨
+  - 컬럼: 주문일자/.../상품명/옵션1/옵션2/수량/가격/배송비/.../주문상태/택배회사/송장번호/...
+  - 계산(프롬프트 "(가격×개수)+배송비3천"):
+    1) '주문일자' 해당월 필터
+    2) '주문상태' 취소류 제외(공용 drop_canceled)
+    3) 매입금 = 상품금액(Σ 가격×수량) + 배송비(송장번호 단위 1건당 3,000원)
+    ★ '배송비' 컬럼 값은 '선불'(텍스트)이라 금액 아님 → 안 쓰고 고정 3,000원 적용.
+  - 검증(2026): 3월 53,230원(상품47,230+배송6,000, 2건) / 4월 41,760원(상품35,760+배송6,000, 2건)
+    / 5월 0원 / 6월 111,550원(상품99,550+배송12,000, 4건, 사용자 수기 대조 일치).
+- main.py      : 완료, 동작 확인됨 (python -m dome_site.3mro.main 2026 3)
+
+────────────────────────────────
 [삭제됨] 가구도매 / 유니온펫 / 온채널 — 2026-07-05
 ────────────────────────────────
 - 사용자 지시로 도매사이트_폴더_이름.txt 에서 세 줄 제거.
@@ -310,6 +345,7 @@
 [주의사항]
 ────────────────────────────────
 - 계정정보.xlsx는 .gitignore 대상이므로 새 PC에서는 직접 생성 필요 (Sheet1, 컬럼: 사이트/아이디/비번)
-- venv도 git에 포함 안 됨. 새 PC에서: python -m venv .venv → pip install openpyxl playwright pandas lxml → playwright install
+- venv도 git에 포함 안 됨. 새 PC에서: python -m venv .venv → pip install openpyxl playwright pandas lxml xlrd → playwright install
   (lxml 은 파라브로처럼 '엑셀'을 HTML 테이블로 내려주는 사이트를 pd.read_html 로 읽기 위해 필요)
+  (xlrd 은 3MRO 처럼 다운로드 파일이 구형 .xls 바이너리(OLE2)인 사이트를 pd.read_excel 로 읽기 위해 필요)
 - git clean -dfx 하면 .gitignore 대상(venv, 계정정보.xlsx)도 전부 삭제됨. -df만 쓸 것.
