@@ -111,7 +111,7 @@
 <main id="tab-aejulnun" class="tab-content">
     <section class="aejulnun-section">
         <h3>에이준줄눈</h3>
-        <p class="settlement-desc">여러 엑셀이 들어있는 폴더를 선택하면, 그 안의 엑셀들로 매입금을 계산합니다. (계산 기능은 준비 중)</p>
+        <p class="settlement-desc">여러 엑셀이 들어있는 폴더를 선택하고, 계산 월·정산엑셀 시트를 고른 뒤 [계산하기]를 누르면 파일별 매입금을 계산합니다.</p>
 
         <div class="aejulnun-dropzone" id="aejulnun-dropzone">
             <div class="dropzone-ic">📁</div>
@@ -121,6 +121,20 @@
         </div>
 
         <div id="aejulnun-result" class="aejulnun-result"></div>
+
+        <div id="aejulnun-controls" class="aejulnun-controls" style="display:none">
+            <div class="ctl-group">
+                <label>계산 월</label>
+                <select id="aejulnun-year"></select>
+                <select id="aejulnun-month"></select>
+            </div>
+            <div class="ctl-group">
+                <button class="btn-secondary" id="aejulnun-load-master">정산엑셀관리 불러오기</button>
+                <select id="aejulnun-sheet" disabled><option value="">시트 선택</option></select>
+            </div>
+            <button class="btn-primary btn-calc" id="aejulnun-calc">계산하기</button>
+        </div>
+
         <div id="aejulnun-calc-result" class="aejulnun-calc-result"></div>
     </section>
 </main>

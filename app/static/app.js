@@ -479,11 +479,13 @@ async function loadAejulnun() {
 
 function renderAejulnun(data) {
     const box = document.getElementById('aejulnun-result');
+    const controls = document.getElementById('aejulnun-controls');
     // 파일 목록이 바뀌면 이전 계산 결과는 무효 → 비운다
     document.getElementById('aejulnun-calc-result').innerHTML = '';
 
     if (!data || !data.count) {
         box.innerHTML = '<div class="aejulnun-empty">선택된 폴더가 없습니다.</div>';
+        controls.style.display = 'none';
         return;
     }
     const rows = (data.files || []).map((f, i) =>
@@ -495,7 +497,6 @@ function renderAejulnun(data) {
             <span class="aejulnun-count">엑셀 ${data.count}개</span>
             <span class="aejulnun-time">${escapeHtml(data.uploaded_at || '')}</span>
             <button class="btn-del" id="aejulnun-clear">비우기</button>
-            <button class="btn-primary btn-calc" id="aejulnun-calc">계산하기</button>
         </div>
         <div class="aejulnun-files-wrap">
             <table class="aejulnun-files">
@@ -505,19 +506,69 @@ function renderAejulnun(data) {
         </div>
     `;
     document.getElementById('aejulnun-clear').addEventListener('click', clearAejulnun);
-    document.getElementById('aejulnun-calc').addEventListener('click', doAejulnunCalc);
+
+    // 계산 설정 바 노출 + 폴더명에서 계산 월 기본값 세팅
+    controls.style.display = 'flex';
+    const ym = parseFolderMonth(data.folder);
+    if (ym) {
+        document.getElementById('aejulnun-year').value = ym.year;
+        document.getElementById('aejulnun-month').value = ym.month;
+    }
+}
+
+// "26년 6월" / "2026년 06월" 같은 폴더명에서 {year, month} 추출
+function parseFolderMonth(folder) {
+    if (!folder) return null;
+    const m = String(folder).match(/(\d{2,4})\s*년\s*(\d{1,2})\s*월/);
+    if (!m) return null;
+    let y = parseInt(m[1], 10);
+    if (y < 100) y += 2000;
+    return { year: y, month: parseInt(m[2], 10) };
+}
+
+async function loadAejulnunMasterSheets() {
+    const sel = document.getElementById('aejulnun-sheet');
+    try {
+        const resp = await fetch('/api/aejulnun/master-sheets');
+        const data = await resp.json();
+        if (data.error) {
+            sel.innerHTML = '<option value="">시트 선택</option>';
+            sel.disabled = true;
+            alert(data.error);
+            return;
+        }
+        const opts = (data.sheets || []).map(s => `<option value="${escapeHtml(s)}">${escapeHtml(s)}</option>`).join('');
+        sel.innerHTML = '<option value="">시트 선택</option>' + opts;
+        sel.disabled = false;
+        appendLog(`정산엑셀 시트 ${data.sheets.length}개 불러옴`);
+    } catch (e) {
+        appendLog('정산엑셀 시트 불러오기 실패: ' + e.message);
+    }
 }
 
 async function doAejulnunCalc() {
     const btn = document.getElementById('aejulnun-calc');
     const out = document.getElementById('aejulnun-calc-result');
+    const year = parseInt(document.getElementById('aejulnun-year').value, 10);
+    const month = parseInt(document.getElementById('aejulnun-month').value, 10);
+    const sheet = document.getElementById('aejulnun-sheet').value;
+
     btn.disabled = true;
     btn.textContent = '계산 중...';
     out.innerHTML = '<div class="aejulnun-empty">계산 중...</div>';
     try {
-        const resp = await fetch('/api/aejulnun/calc', { method: 'POST' });
-        renderAejulnunCalc(await resp.json());
-        appendLog('에이준줄눈 계산 실행');
+        const resp = await fetch('/api/aejulnun/calc', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ year, month, sheet }),
+        });
+        const data = await resp.json();
+        if (data.error) {
+            out.innerHTML = '<div class="settlement-error">' + escapeHtml(data.error) + '</div>';
+        } else {
+            renderAejulnunCalc(data);
+            appendLog(`에이준줄눈 계산: ${data.month} → ${(data.total || 0).toLocaleString('ko-KR')}원`);
+        }
     } catch (e) {
         out.innerHTML = '<div class="settlement-error">계산 실패: ' + escapeHtml(e.message) + '</div>';
     } finally {
@@ -537,21 +588,78 @@ function renderAejulnunCalc(data) {
         out.innerHTML = '<div class="aejulnun-empty">계산할 파일이 없습니다.</div>';
         return;
     }
-    const banner = data.pending
-        ? '<div class="aejulnun-pending">⚠️ 계산 규칙이 아직 없어 매입금은 “—” 로 표시됩니다. 규칙을 알려주시면 채워집니다.</div>'
+    const note = data.master_note
+        ? `<div class="aejulnun-pending">⚠️ ${escapeHtml(data.master_note)}</div>`
         : '';
-    const rows = results.map((r, i) =>
-        `<tr><td>${i + 1}</td><td>${escapeHtml(r.name)}</td><td class="won">${won(r.amount)}</td></tr>`
-    ).join('');
-    const totalRow = `<tr class="total-row"><td></td><td>합계 (${results.length}건)</td><td class="won">${won(data.total)}</td></tr>`;
+    const rows = results.map((r, i) => {
+        const hasDetail = !!r.detail;
+        const mark = hasDetail ? '<span class="detail-arrow">▸</span> ' : '';
+        const mainRow = `<tr class="calc-row ${r.error ? 'has-err' : ''} ${hasDetail ? 'clickable' : ''}" ${hasDetail ? `data-idx="${i}"` : ''}>
+            <td>${i + 1}</td>
+            <td>${mark}${escapeHtml(r.name)}</td>
+            <td class="won">${won(r.amount)}</td>
+            <td class="err">${escapeHtml(r.error || '')}</td>
+        </tr>`;
+        const detailRow = hasDetail
+            ? `<tr class="calc-detail-row" id="calc-detail-${i}" style="display:none"><td colspan="4">${renderAejulnunDetail(r.detail)}</td></tr>`
+            : '';
+        return mainRow + detailRow;
+    }).join('');
+    const totalRow = `<tr class="total-row"><td></td><td>합계 (${results.length}건)</td><td class="won">${won(data.total)}</td><td></td></tr>`;
     out.innerHTML = `
-        <h4 class="aejulnun-calc-title">계산 결과</h4>
-        ${banner}
-        <div class="aejulnun-files-wrap">
+        <h4 class="aejulnun-calc-title">계산 결과 <span class="calc-month">${escapeHtml(data.month || '')}</span>
+            <span class="calc-hint">첫·마지막 파일(▸)을 클릭하면 상세 계산이 열립니다</span></h4>
+        ${note}
+        <div class="aejulnun-calc-wrap">
             <table class="aejulnun-calc-table">
-                <thead><tr><th>#</th><th>파일이름</th><th>매입금</th></tr></thead>
+                <thead><tr><th>#</th><th>파일이름</th><th>매입금</th><th>에러</th></tr></thead>
                 <tbody>${rows}${totalRow}</tbody>
             </table>
+        </div>
+    `;
+
+    // 첫/마지막 행 클릭 → 상세 토글
+    out.querySelectorAll('.calc-row.clickable').forEach(tr => {
+        tr.addEventListener('click', () => {
+            const idx = tr.dataset.idx;
+            const dr = document.getElementById('calc-detail-' + idx);
+            const open = dr.style.display === 'none';
+            dr.style.display = open ? 'table-row' : 'none';
+            const arrow = tr.querySelector('.detail-arrow');
+            if (arrow) arrow.textContent = open ? '▾' : '▸';
+        });
+    });
+}
+
+function renderAejulnunDetail(d) {
+    const title = d.edge === 'first' ? '첫 파일 보정' : '마지막 파일 보정';
+    const removedLabel = d.edge === 'first' ? '제거됨 (전달분)' : '제거됨 (다음달분)';
+    const listTable = (rows, cls) => {
+        if (!rows.length) return '<div class="detail-empty">없음</div>';
+        const body = rows.map(r =>
+            `<tr><td>${escapeHtml(r.name)}</td><td class="won">${Number(r.amount).toLocaleString('ko-KR')}</td></tr>`
+        ).join('');
+        return `<table class="detail-list ${cls}"><tbody>${body}</tbody></table>`;
+    };
+    return `
+        <div class="calc-detail">
+            <div class="detail-rule">${title} — <b>${escapeHtml(d.window)}</b> 에 주문한 분만 남깁니다 (부가세 10%)</div>
+            <div class="detail-fullnet">파일 전체 순액: <b>${Number(d.full_net).toLocaleString('ko-KR')}원</b></div>
+            <div class="detail-cols">
+                <div class="detail-col">
+                    <div class="detail-col-head keep">남긴 주문 (${d.kept.length}건)</div>
+                    ${listTable(d.kept, 'keep')}
+                </div>
+                <div class="detail-col">
+                    <div class="detail-col-head drop">${removedLabel} (${d.removed.length}건)</div>
+                    ${listTable(d.removed, 'drop')}
+                </div>
+            </div>
+            <div class="detail-sum">
+                순액 <b>${Number(d.net).toLocaleString('ko-KR')}</b>
+                + 부가세 <b>${Number(d.vat).toLocaleString('ko-KR')}</b>
+                = 매입금 <b class="won">${Number(d.net + d.vat).toLocaleString('ko-KR')}원</b>
+            </div>
         </div>
     `;
 }
@@ -681,6 +789,22 @@ function initAejulnun() {
         const files = await collectFilesFromDrop(e.dataTransfer);
         if (files.length) uploadAejulnunFolder(files, folderNameFromFiles(files));
     });
+
+    // 계산 설정 바: 년/월 드롭다운 채우기 + 정적 버튼 바인딩(1회)
+    const ySel = document.getElementById('aejulnun-year');
+    const mSel = document.getElementById('aejulnun-month');
+    const nowY = new Date().getFullYear();
+    for (let y = nowY - 3; y <= nowY + 1; y++) {
+        ySel.insertAdjacentHTML('beforeend', `<option value="${y}">${y}년</option>`);
+    }
+    for (let m = 1; m <= 12; m++) {
+        mSel.insertAdjacentHTML('beforeend', `<option value="${m}">${m}월</option>`);
+    }
+    ySel.value = nowY;
+    mSel.value = new Date().getMonth() + 1;
+
+    document.getElementById('aejulnun-load-master').addEventListener('click', loadAejulnunMasterSheets);
+    document.getElementById('aejulnun-calc').addEventListener('click', doAejulnunCalc);
 }
 
 // ── 초기화 ───────────────────────────────────────

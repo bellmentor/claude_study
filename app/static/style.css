@@ -437,8 +437,42 @@ body {
 .aejulnun-summary .btn-calc:hover { background: #1e2b45; }
 .aejulnun-summary .btn-calc:disabled { background: #99a3b5; cursor: not-allowed; }
 
+/* 계산 설정 바 */
+.aejulnun-controls {
+    display: flex;
+    align-items: center;
+    gap: 18px;
+    flex-wrap: wrap;
+    margin-top: 16px;
+    padding: 14px 16px;
+    background: #f4f7fb;
+    border: 1px solid #d5dce6;
+    border-radius: 8px;
+}
+.aejulnun-controls .ctl-group { display: flex; align-items: center; gap: 8px; }
+.aejulnun-controls label { font-size: 13px; font-weight: 700; color: #445; }
+.aejulnun-controls select {
+    padding: 6px 10px;
+    font-size: 13px;
+    border: 1px solid #b8c2d0;
+    border-radius: 5px;
+    font-family: inherit;
+    background: #fff;
+}
+.aejulnun-controls select:disabled { background: #eceff3; color: #98a0ab; }
+.aejulnun-controls .btn-calc {
+    margin-left: auto;
+    background: #2b3a5b;
+    padding: 8px 22px;
+    font-weight: 700;
+    font-size: 14px;
+}
+.aejulnun-controls .btn-calc:hover { background: #1e2b45; }
+.aejulnun-controls .btn-calc:disabled { background: #99a3b5; cursor: not-allowed; }
+
 /* 계산 결과 */
 .aejulnun-calc-result { margin-top: 22px; }
+.calc-month { font-size: 13px; color: #667; font-weight: 400; margin-left: 6px; }
 .aejulnun-calc-title { font-size: 16px; margin-bottom: 10px; }
 .aejulnun-pending {
     background: #fff6e5;
@@ -449,13 +483,56 @@ body {
     border-radius: 8px;
     margin-bottom: 12px;
 }
-.aejulnun-calc-table .won { width: 140px; text-align: right; white-space: nowrap; font-variant-numeric: tabular-nums; }
+.aejulnun-calc-table .won { width: 130px; text-align: right; white-space: nowrap; font-variant-numeric: tabular-nums; }
+.aejulnun-calc-table .err { color: #d32f2f; font-size: 12px; font-weight: 600; }
+.aejulnun-calc-table tr.has-err td { background: #fff3f3; }
 .aejulnun-calc-table .total-row td {
     background: #eef2fb;
     font-weight: 700;
     border-top: 2px solid #c3cee0;
 }
+.aejulnun-calc-table tr.has-err.total-row td { background: #eef2fb; }
 .aejulnun-calc-table .total-row .won { color: #1e7e34; }
+
+/* 계산결과 표: 높이 제한 없이(상세 펼침이 잘리지 않게), 좁으면 가로 스크롤만 */
+.aejulnun-calc-wrap { overflow-x: auto; border: 1px solid #d5dce6; border-radius: 6px; }
+.aejulnun-calc-wrap .aejulnun-calc-table { border: none; }
+
+/* 계산결과 상세보기(첫/마지막 파일) */
+.calc-hint { font-size: 12px; color: #98a0ab; font-weight: 400; margin-left: 8px; }
+.aejulnun-calc-table tr.clickable { cursor: pointer; }
+.aejulnun-calc-table tr.clickable:hover td { background: #eef3fb; }
+.detail-arrow { color: #3b5bdb; font-size: 11px; }
+
+.calc-detail {
+    border-left: 4px solid #3b5bdb;
+    background: #f7f9fc;
+    padding: 14px 16px;
+    margin: 2px 0;
+}
+.detail-rule { font-size: 13px; color: #333; margin-bottom: 4px; }
+.detail-rule b { color: #2b3a5b; }
+.detail-fullnet { font-size: 12px; color: #667; margin-bottom: 12px; }
+.detail-cols { display: flex; gap: 18px; flex-wrap: wrap; }
+.detail-col { flex: 1; min-width: 220px; }
+.detail-col-head { font-size: 13px; font-weight: 700; padding: 5px 8px; border-radius: 5px 5px 0 0; }
+.detail-col-head.keep { background: #e6f4ea; color: #1e7e34; }
+.detail-col-head.drop { background: #fdeaea; color: #c0392b; }
+.detail-list { width: 100%; border-collapse: collapse; font-size: 13px; background: #fff; }
+.detail-list td { border: 1px solid #e5e9ef; padding: 5px 9px; }
+.detail-list td.won { text-align: right; white-space: nowrap; font-variant-numeric: tabular-nums; }
+.detail-list.drop td:first-child { color: #b03a2e; }
+.detail-empty { font-size: 12px; color: #98a0ab; padding: 6px 8px; border: 1px solid #e5e9ef; background: #fff; }
+.detail-sum {
+    margin-top: 12px;
+    font-size: 14px;
+    background: #eef2fb;
+    border: 1px solid #c3cee0;
+    border-radius: 6px;
+    padding: 9px 14px;
+}
+.detail-sum b { color: #2b3a5b; }
+.detail-sum b.won { color: #1e7e34; }
 
 /* ── 하단 로그 ─────────────────────────────────── */
 .log-area {
