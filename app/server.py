@@ -37,6 +37,22 @@ SITE_LIST_TXT = ROOT / "dome_site" / "도매사이트_폴더_이름.txt"
 SUMMARY_XLSX = ROOT / "dome_site" / "도매_매입금.xlsx"
 PYTHON = sys.executable
 
+# ── 정산엑셀 관리 ──────────────────────────────────────────
+# 프로그램이 계속 참조할 정산용 엑셀을 명명된 슬롯에 업로드/교체/삭제한다.
+# 파일은 슬롯 key 로 고정 저장(정산엑셀/<key>.xlsx)하여 안정 경로로 참조 가능.
+# 슬롯 추가 = 아래 SETTLEMENT_SLOTS 에 {"key","name"} 한 줄 추가.
+SETTLEMENT_DIR = ROOT / "정산엑셀"
+SETTLEMENT_MANIFEST = SETTLEMENT_DIR / "_manifest.json"
+SETTLEMENT_SLOTS: list[dict[str, str]] = [
+    {"key": "total", "name": "전체 정산용 엑셀"},
+]
+ALLOWED_EXCEL_EXT = (".xlsx", ".xls")
+
+# 에이준줄눈: 폴더째 업로드받아 그 안의 엑셀들로 매입금을 계산할 작업폴더.
+# (브라우저가 폴더 절대경로를 못 주므로, 선택 폴더의 엑셀 파일들을 여기로 복사한다.)
+AEJULNUN_DIR = SETTLEMENT_DIR / "aejulnun"
+AEJULNUN_META = AEJULNUN_DIR / "_meta.json"
+
 # ── 로그 버퍼 + WebSocket 브로드캐스터 ─────────────────────
 # 로그는 HTTP 폴링(상태 조회)으로 받는 것을 1차 채널로 한다. WebSocket 은
 # 리로드/늦은 연결 시 메시지를 놓치므로, 버퍼에 쌓아두고 폴링으로 재생한다.
@@ -109,6 +125,115 @@ def load_site_list() -> list[dict[str, str]]:
             if slug:
                 sites.append({"name": name, "slug": slug, "note": SITE_NOTES.get(slug, "")})
     return sites
+
+
+# ── 정산엑셀 헬퍼 ──────────────────────────────────────────
+def _load_settlement_manifest() -> dict[str, dict[str, str]]:
+    """정산엑셀/_manifest.json 을 읽어 반환한다. 없으면 빈 dict."""
+    if not SETTLEMENT_MANIFEST.exists():
+        return {}
+    try:
+        import json
+        return json.loads(SETTLEMENT_MANIFEST.read_text(encoding="utf-8"))
+    except Exception:
+        return {}
+
+
+def _save_settlement_manifest(manifest: dict[str, dict[str, str]]) -> None:
+    """정산엑셀/_manifest.json 에 저장한다."""
+    import json
+    SETTLEMENT_DIR.mkdir(exist_ok=True)
+    SETTLEMENT_MANIFEST.write_text(
+        json.dumps(manifest, ensure_ascii=False, indent=2), encoding="utf-8"
+    )
+
+
+def settlement_file_path(key: str) -> Path | None:
+    """슬롯 key 의 업로드된 정산엑셀 경로를 반환한다. 없으면 None.
+
+    향후 프로그램(정산 계산 로직 등)이 이 헬퍼로 업로드된 엑셀을 읽어 사용한다.
+    """
+    if key not in {s["key"] for s in SETTLEMENT_SLOTS}:
+        return None
+    path = SETTLEMENT_DIR / f"{key}.xlsx"
+    return path if path.exists() else None
+
+
+def _settlement_status() -> list[dict[str, Any]]:
+    """SETTLEMENT_SLOTS 순회하며 각 슬롯의 업로드 상태를 만든다."""
+    manifest = _load_settlement_manifest()
+    slots: list[dict[str, Any]] = []
+    for slot in SETTLEMENT_SLOTS:
+        key = slot["key"]
+        path = SETTLEMENT_DIR / f"{key}.xlsx"
+        uploaded = path.exists()
+        meta = manifest.get(key, {})
+        slots.append({
+            "key": key,
+            "name": slot["name"],
+            "uploaded": uploaded,
+            "filename": meta.get("original", "") if uploaded else "",
+            "uploaded_at": meta.get("uploaded_at", "") if uploaded else "",
+        })
+    return slots
+
+
+# ── 에이준줄눈 폴더 헬퍼 ───────────────────────────────────
+def aejulnun_files() -> list[Path]:
+    """업로드된 에이준줄눈 작업폴더의 엑셀 파일 경로 목록을 반환한다.
+
+    향후 에이준줄눈 매입금 계산 로직이 이 헬퍼로 폴더 안 엑셀들을 읽어 계산한다.
+    """
+    if not AEJULNUN_DIR.exists():
+        return []
+    return sorted(
+        f for f in AEJULNUN_DIR.iterdir()
+        if f.is_file()
+        and f.suffix.lower() in ALLOWED_EXCEL_EXT
+        and not f.name.startswith("~")
+    )
+
+
+def _load_aejulnun_meta() -> dict[str, Any]:
+    """에이준줄눈 작업폴더 메타(_meta.json)를 읽어 반환한다. 없으면 빈 dict."""
+    if not AEJULNUN_META.exists():
+        return {}
+    try:
+        import json
+        return json.loads(AEJULNUN_META.read_text(encoding="utf-8"))
+    except Exception:
+        return {}
+
+
+def _save_aejulnun_meta(meta: dict[str, Any]) -> None:
+    """에이준줄눈 작업폴더 메타를 저장한다."""
+    import json
+    AEJULNUN_DIR.mkdir(parents=True, exist_ok=True)
+    AEJULNUN_META.write_text(json.dumps(meta, ensure_ascii=False, indent=2), encoding="utf-8")
+
+
+def _wipe_aejulnun_dir() -> None:
+    """에이준줄눈 작업폴더의 파일을 모두 지운다(폴더 자체는 유지)."""
+    if not AEJULNUN_DIR.exists():
+        return
+    for f in AEJULNUN_DIR.iterdir():
+        if f.is_file():
+            try:
+                f.unlink()
+            except Exception:
+                pass
+
+
+def _aejulnun_status() -> dict[str, Any]:
+    """에이준줄눈 작업폴더 상태(선택폴더명/시각/엑셀목록)를 만든다."""
+    meta = _load_aejulnun_meta()
+    files = [{"name": f.name, "size": f.stat().st_size} for f in aejulnun_files()]
+    return {
+        "folder": meta.get("folder", ""),
+        "uploaded_at": meta.get("uploaded_at", ""),
+        "count": len(files),
+        "files": files,
+    }
 
 
 # ── 사이트별 subprocess 실행 ──────────────────────────────
@@ -241,6 +366,196 @@ async def put_accounts(request: Request):
     wb.save(ACCOUNT_XLSX)
     wb.close()
     return {"ok": True}
+
+
+# ── 정산엑셀 API ──────────────────────────────────────────
+@app.get("/api/settlement")
+async def get_settlement():
+    """정산엑셀 슬롯 목록 + 각 슬롯의 업로드 상태를 반환한다."""
+    return {"slots": _settlement_status()}
+
+
+@app.post("/api/settlement/upload/{key}")
+async def upload_settlement(key: str, request: Request):
+    """정산엑셀을 슬롯 key 로 업로드한다(raw body). 저장 후 갱신된 슬롯 상태 반환.
+
+    python-multipart 없이 동작하도록 파일 바이트를 요청 body 로 직접 받는다.
+    원본 파일명은 X-Filename 헤더로 전달한다(encodeURIComponent → 서버에서 unquote).
+    ※ 쿼리파라미터 대신 헤더를 쓰는 이유: 파일명이 URL 에 들어가면 uvicorn 접속 로그에
+      퍼센트 인코딩(%EC%9B%94…)으로 찍혀 콘솔에서 한글이 안 읽힌다. 헤더는 접속 로그에
+      안 남으므로 경로가 깨끗해지고, 아래에서 읽기 쉬운 한글 로그를 따로 찍는다.
+    """
+    import urllib.parse
+    filename = urllib.parse.unquote(request.headers.get("x-filename", ""), encoding="utf-8")
+
+    valid_keys = {s["key"] for s in SETTLEMENT_SLOTS}
+    if key not in valid_keys:
+        return {"error": f"알 수 없는 슬롯: {key}"}
+
+    ext = Path(filename).suffix.lower()
+    if ext not in ALLOWED_EXCEL_EXT:
+        return {"error": "엑셀 파일(.xlsx, .xls)만 업로드할 수 있습니다"}
+
+    data = await request.body()
+    if not data:
+        return {"error": "빈 파일입니다"}
+
+    SETTLEMENT_DIR.mkdir(exist_ok=True)
+    dest = SETTLEMENT_DIR / f"{key}.xlsx"
+    try:
+        dest.write_bytes(data)
+    except PermissionError:
+        return {"error": "파일이 열려있어 저장할 수 없습니다. 엑셀에서 닫고 다시 시도하세요."}
+
+    import datetime
+    manifest = _load_settlement_manifest()
+    manifest[key] = {
+        "original": filename,
+        "uploaded_at": datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
+    }
+    _save_settlement_manifest(manifest)
+
+    # 서버 콘솔에도 읽기 쉬운 한글 로그(stdout 은 상단에서 UTF-8 로 고정됨)
+    print(f"[정산엑셀] '{filename}' 업로드됨 → {key} ({len(data):,} bytes)", flush=True)
+    send_log(f"[정산엑셀] '{filename}' 업로드됨 → {key}")
+    return {"ok": True, "slots": _settlement_status()}
+
+
+@app.delete("/api/settlement/{key}")
+async def delete_settlement(key: str):
+    """슬롯 key 의 정산엑셀을 삭제한다."""
+    valid_keys = {s["key"] for s in SETTLEMENT_SLOTS}
+    if key not in valid_keys:
+        return {"error": f"알 수 없는 슬롯: {key}"}
+
+    path = SETTLEMENT_DIR / f"{key}.xlsx"
+    if path.exists():
+        try:
+            path.unlink()
+        except PermissionError:
+            return {"error": "파일이 열려있어 삭제할 수 없습니다. 엑셀에서 닫고 다시 시도하세요."}
+
+    manifest = _load_settlement_manifest()
+    manifest.pop(key, None)
+    _save_settlement_manifest(manifest)
+
+    print(f"[정산엑셀] {key} 삭제됨", flush=True)
+    send_log(f"[정산엑셀] {key} 삭제됨")
+    return {"ok": True, "slots": _settlement_status()}
+
+
+# ── 에이준줄눈 폴더 API ────────────────────────────────────
+@app.get("/api/aejulnun")
+async def get_aejulnun():
+    """에이준줄눈 작업폴더 상태(선택폴더명/엑셀목록)를 반환한다."""
+    return _aejulnun_status()
+
+
+@app.post("/api/aejulnun/clear")
+async def clear_aejulnun(request: Request):
+    """새 폴더 업로드 시작: 기존 작업폴더를 비우고 메타(선택폴더명/시각)를 초기화한다.
+
+    선택한 폴더명은 X-Folder 헤더로 전달한다(encodeURIComponent → 서버 unquote).
+    """
+    import urllib.parse, datetime
+    folder = urllib.parse.unquote(request.headers.get("x-folder", ""), encoding="utf-8")
+
+    _wipe_aejulnun_dir()
+    _save_aejulnun_meta({
+        "folder": folder,
+        "uploaded_at": datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
+    })
+    print(f"[에이준줄눈] 폴더 선택: '{folder}' (기존 작업폴더 비움)", flush=True)
+    send_log(f"[에이준줄눈] 폴더 선택: '{folder}'")
+    return {"ok": True}
+
+
+@app.post("/api/aejulnun/upload")
+async def upload_aejulnun(request: Request):
+    """폴더 안의 엑셀 파일 1개를 작업폴더로 업로드한다(raw body).
+
+    원본 상대경로는 X-Filename 헤더로 전달한다. 경로 구분자는 __ 로 평탄화해 저장.
+    엑셀(.xlsx/.xls)이 아니면 무시(폴더에 섞인 다른 파일 방어).
+    """
+    import urllib.parse
+    relpath = urllib.parse.unquote(request.headers.get("x-filename", ""), encoding="utf-8")
+
+    ext = Path(relpath).suffix.lower()
+    if ext not in ALLOWED_EXCEL_EXT:
+        return {"skipped": relpath}
+
+    # "폴더/하위/a.xlsx" → 최상위 폴더명 떼고 나머지 경로구분자 평탄화
+    parts = relpath.replace("\\", "/").split("/")
+    inner = parts[1:] if len(parts) > 1 else parts
+    safe = "__".join(inner) or Path(relpath).name
+
+    data = await request.body()
+    if not data:
+        return {"error": "빈 파일입니다"}
+
+    AEJULNUN_DIR.mkdir(parents=True, exist_ok=True)
+    dest = AEJULNUN_DIR / safe
+    try:
+        dest.write_bytes(data)
+    except PermissionError:
+        return {"error": f"파일이 열려있어 저장 실패: {safe}"}
+    return {"ok": True, "saved": safe}
+
+
+def _calc_aejulnun_file(path: Path) -> int | None:
+    """발주서 엑셀 1개에서 매입금을 계산한다. (계산 규칙 미정 → 현재 스텁: None 반환)
+
+    ▶▶ 사용자가 계산 규칙을 알려주면 이 함수만 구현하면 된다(단일 플러그인 지점). ◀◀
+
+    조사 결과(참고):
+      - 이 발주서(스마트스토어 발주서 형식)는 각 주문행의 price block(컬럼 5~11)에
+        배송비 3,000 + 각 상품가격 + 보수제 500 이 들어있고, '반품' 행은 음수(예 -4,000)다.
+      - 파일 맨 아래에 사용자가 직접 적은 '순액+부가세=합계' 요약행이 있다
+        (예 '219,200+21,920=241,120'). 주문행 합이 순액과 정확히 일치함(검증됨).
+      - 규칙 확정 방식 후보: (a) 요약행의 합계/순액을 파싱, (b) 주문행 직접 합산 후 ×1.1.
+    """
+    return None  # 규칙 미정
+
+
+@app.post("/api/aejulnun/calc")
+async def calc_aejulnun():
+    """작업폴더의 발주서들을 파일별로 계산해 [{파일명, 매입금}] 과 합계를 반환한다.
+
+    계산 규칙이 아직 없으면(_calc_aejulnun_file 이 None) pending=True 로 내려보내
+    UI 가 매입금을 '—' 로 표시하게 한다.
+    """
+    results: list[dict[str, Any]] = []
+    total = 0
+    any_amount = False
+    for f in aejulnun_files():
+        amount = _calc_aejulnun_file(f)
+        if amount is not None:
+            any_amount = True
+            total += amount
+        results.append({"name": f.name, "amount": amount})
+
+    pending = not any_amount
+    print(f"[에이준줄눈] 계산 실행: {len(results)}개 파일 (규칙 {'미정' if pending else '적용'})", flush=True)
+    send_log(f"[에이준줄눈] 계산 실행: {len(results)}개 파일")
+    return {
+        "results": results,
+        "total": None if pending else total,
+        "pending": pending,
+    }
+
+
+@app.delete("/api/aejulnun")
+async def delete_aejulnun():
+    """에이준줄눈 작업폴더를 비우고 메타를 삭제한다."""
+    _wipe_aejulnun_dir()
+    if AEJULNUN_META.exists():
+        try:
+            AEJULNUN_META.unlink()
+        except Exception:
+            pass
+    print("[에이준줄눈] 작업폴더 비움", flush=True)
+    send_log("[에이준줄눈] 작업폴더 비움")
+    return {"ok": True, **_aejulnun_status()}
 
 
 # ── 수집 API ──────────────────────────────────────────────

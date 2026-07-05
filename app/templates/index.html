@@ -10,8 +10,10 @@
 
 <!-- 상단 네비게이션 -->
 <nav class="top-nav">
+    <button class="nav-btn nav-left" data-tab="settlement">정산엑셀관리</button>
     <button class="nav-btn active" data-tab="collect">매입금 수집</button>
-    <button class="nav-btn" data-tab="settings">설정</button>
+    <button class="nav-btn" data-tab="aejulnun">에이준줄눈</button>
+    <button class="nav-btn nav-right" data-tab="settings">설정</button>
 </nav>
 
 <!-- 매입금 수집 탭 -->
@@ -93,6 +95,33 @@
             <button id="btn-add-account" class="btn-secondary">행 추가</button>
             <button id="btn-save-accounts" class="btn-primary">저장</button>
         </div>
+    </section>
+</main>
+
+<!-- 정산엑셀관리 탭 -->
+<main id="tab-settlement" class="tab-content">
+    <section class="settlement-section">
+        <h3>정산엑셀관리</h3>
+        <p class="settlement-desc">프로그램이 참조할 정산용 엑셀을 업로드합니다. 드래그앤드롭 또는 파일 찾기로 올리세요.</p>
+        <div id="settlement-cards" class="settlement-cards"></div>
+    </section>
+</main>
+
+<!-- 에이준줄눈 탭 -->
+<main id="tab-aejulnun" class="tab-content">
+    <section class="aejulnun-section">
+        <h3>에이준줄눈</h3>
+        <p class="settlement-desc">여러 엑셀이 들어있는 폴더를 선택하면, 그 안의 엑셀들로 매입금을 계산합니다. (계산 기능은 준비 중)</p>
+
+        <div class="aejulnun-dropzone" id="aejulnun-dropzone">
+            <div class="dropzone-ic">📁</div>
+            <div class="dropzone-text" id="aejulnun-dz-text">여기로 폴더를 드래그하거나</div>
+            <button class="btn-secondary" type="button" id="aejulnun-browse">폴더 찾기</button>
+            <input type="file" id="aejulnun-input" webkitdirectory directory multiple style="display:none">
+        </div>
+
+        <div id="aejulnun-result" class="aejulnun-result"></div>
+        <div id="aejulnun-calc-result" class="aejulnun-calc-result"></div>
     </section>
 </main>
 

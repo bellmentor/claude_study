@@ -65,6 +65,14 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 - **로그 전달은 HTTP 폴링으로 한다 (WebSocket 금지)**: subprocess stdout 을 서버 메모리 버퍼(`_logs`)에 쌓고, 진행상황 폴링(`GET /api/collect/status?since=N`)이 `since` 이후 새 로그를 함께 내려준다. 클라이언트는 받은 개수를 다음 `since`로 보낸다. WebSocket 은 재연결·replay 가 없어 연결이 한 번 끊기거나 늦게 붙으면 로그가 통째로 유실된다(머신/타이밍/보안SW에 따라 한 PC만 깨지는 증상). 폴링은 유지할 연결이 없어 환경 무관하게 안정적이다. (2026-06-14 WebSocket→폴링 전환)
 - **정적 파일(app.js/css) 수정 후엔 브라우저 강력 새로고침(Ctrl+F5) 안내**: 브라우저 캐시 때문에 옛 JS 가 돌아 "코드 고쳤는데 그대로"인 착시가 생긴다.
 
+## 정산엑셀 관리 (Web UI)
+
+- 프로그램이 계속 참조할 정산용 엑셀은 Web UI '정산엑셀관리' 탭에서 업로드한다. 저장 위치는 저장소 루트의 `정산엑셀/<key>.xlsx` (고정 경로), 표시용 메타데이터는 `정산엑셀/_manifest.json`.
+- 슬롯 정의는 `app/server.py` 의 `SETTLEMENT_SLOTS`(`{"key","name"}` 리스트). **슬롯 추가 = 여기에 한 줄 추가**하면 UI 카드가 자동 생성된다.
+- 다른 코드에서 업로드된 정산엑셀을 쓰려면 `app.server.settlement_file_path(key)` 로 경로를 얻어 `pandas.read_excel` 한다 (파일 없으면 None).
+- `정산엑셀/` 폴더는 `.gitignore` 로 통째로 제외된다(업로드 엑셀 + manifest 는 로컬 런타임 데이터). `계정정보.xlsx` 처럼 git 엔 안 올라가도 로컬 프로그램은 정상적으로 읽어 쓴다.
+- **에이준줄눈**은 단일 슬롯이 아니라 '폴더째' 처리한다. Web UI '에이준줄눈' 탭에서 폴더를 선택(드래그앤드롭/폴더찾기)하면 그 안의 엑셀들이 `정산엑셀/aejulnun/` 로 복사된다. 계산 로직은 `app.server.aejulnun_files()`(작업폴더의 엑셀 경로 리스트)로 읽어 붙인다. 폴더 절대경로는 브라우저가 못 주므로 업로드(복사) 방식이다.
+
 ## 엑셀 처리
 
 - 엑셀 파일을 읽고 쓸 때는 **pandas를 우선** 사용한다. openpyxl은 pandas가 처리할 수 없는 경우(셀 서식 등)에만 사용.

@@ -49,19 +49,55 @@ GET  /api/accounts           : 계정 목록 조회 (계정정보.xlsx)
 PUT  /api/accounts           : 계정 정보 수정 → xlsx 저장
 POST /api/collect            : 매입금 수집 시작 (sites[], start_date, end_date)
 GET  /api/collect/status?since=N : 진행상황 + N 인덱스 이후 새 로그(logs, log_count) 반환
+GET  /api/settlement                 : 정산엑셀 슬롯 목록+업로드 상태 반환
+POST /api/settlement/upload/{key}    : 정산엑셀 업로드 (raw body 바이트, 원본파일명은 X-Filename 헤더)
+DEL  /api/settlement/{key}           : 정산엑셀 삭제
+  ※ 파일명을 쿼리 대신 X-Filename 헤더로 보냄 → uvicorn 접속로그에 %인코딩 한글 안 찍힘.
+    업로드/삭제 시 서버 콘솔에 '[정산엑셀] ... 업로드됨' 읽기 쉬운 한글 로그도 print.
+GET  /api/aejulnun                   : 에이준줄눈 작업폴더 상태(선택폴더명/엑셀목록) 반환
+POST /api/aejulnun/clear             : 새 폴더 시작 — 작업폴더 비우고 메타 초기화 (폴더명은 X-Folder 헤더)
+POST /api/aejulnun/upload            : 폴더 안 엑셀 1개 업로드 (raw body, 상대경로는 X-Filename 헤더)
+POST /api/aejulnun/calc              : 폴더 안 발주서들을 파일별로 계산 → {results:[{name,amount}], total, pending}
+DEL  /api/aejulnun                   : 에이준줄눈 작업폴더 비우기
+  ※ 폴더 업로드 흐름: JS 가 폴더 선택(webkitdirectory/드래그) → clear → 각 엑셀 upload 순차 → GET 갱신.
+    엑셀(.xlsx/.xls) 아닌 파일은 서버가 무시. 저장: 정산엑셀/aejulnun/, 메타: _meta.json.
+    server.aejulnun_files() 로 다음 계산단계가 폴더 안 엑셀 경로들을 읽어 씀.
 WS   /ws/logs                : (레거시) 클라이언트 미사용
 
 ════════════════════════════════════════
-[화면 구성] 2개 탭
+[화면 구성] 4개 탭  (네비 순서: 정산엑셀관리 | 매입금수집 | 에이준줄눈 | 설정)
 ════════════════════════════════════════
 
-1. 매입금 수집 탭 (메인)
+0. 정산엑셀관리 탭 (좌측 네비, 2026-07-05 추가)
+   - 프로그램이 계속 참조할 정산용 엑셀을 명명된 슬롯에 업로드/교체/삭제
+   - 슬롯별 카드(칸칸 구분: 헤더 띠 + 좌측 강조바): 드래그앤드롭 + [파일 찾기] + 현재파일 + [삭제]
+     · 드래그 시 드롭존 색이 확 바뀜(바닐라, 라이브러리 없음)
+   - 저장: 정산엑셀/<key>.xlsx (고정경로), 표시 메타는 정산엑셀/_manifest.json
+   - 슬롯 정의는 server.py 의 SETTLEMENT_SLOTS. 현재: total=전체 정산용 엑셀 (1개)
+     · '에이준 줄눈' 슬롯은 제거됨 → 에이준줄눈은 아래 '에이준줄눈' 탭(폴더 방식)에서 처리
+   - 업로드는 python-multipart 없이 raw body 방식(request.body()). 확장자 .xlsx/.xls 만 허용
+   - server.settlement_file_path(key) 로 다른 코드가 업로드 엑셀 경로를 얻어 read_excel 가능
+   - 정산엑셀/ 폴더는 .gitignore 로 통째로 제외(엑셀+manifest 로컬 전용)
+
+0-2. 에이준줄눈 탭 (매입금수집 오른쪽, 2026-07-05 추가)
+   - 여러 엑셀이 든 '폴더'를 드래그앤드롭 또는 [폴더 찾기](webkitdirectory)로 선택
+   - 브라우저가 폴더 절대경로를 못 주므로, 선택 폴더의 엑셀들을 서버 작업폴더(정산엑셀/aejulnun/)로 복사
+     · JS: clear → 각 엑셀 upload 순차 → 목록 갱신. 엑셀 아닌 파일은 무시. 하위폴더는 __ 로 평탄화.
+   - 화면: 선택폴더명/엑셀개수/시각 + [비우기] + [계산하기](오른쪽)
+     · 파일목록은 스크롤 박스(.aejulnun-files-wrap, max-height, 헤더 sticky) — 파일 많아도 페이지 안 길어짐
+     · [계산하기] → POST /api/aejulnun/calc → 결과표(파일이름|매입금 + 합계행) 렌더
+   - ★ 계산 규칙 미정(사용자 추후 제공): server._calc_aejulnun_file(path) 가 현재 스텁(None 반환).
+     → pending=True 로 내려와 매입금 "—" + "규칙 대기 중" 배너 표시. 규칙 오면 이 함수만 구현하면 됨.
+     조사메모: 발주서 20/20 에 '순액+부가세=합계' 요약행 존재(예 219,200+21,920=241,120),
+     주문행(배송비+상품가격) 합이 순액과 일치 검증됨 → 규칙 확정 시 요약행 파싱 또는 직접합산 중 택1.
+
+1. 매입금 수집 탭 (메인, 중앙 네비)
    - 좌측: 달력 (월/년 드롭다운, 날짜 범위 선택)
-   - 중앙: 도매사이트 테이블 (체크박스/사이트명/매입금/진행상황)
+   - 중앙: 도매사이트 테이블 (체크박스/사이트명/매입금/진행상황/메모/에러)
    - 우측: [수집시작] 버튼
    - 하단: 실시간 로그
 
-2. 설정 탭
+2. 설정 탭 (우측 네비)
    - 계정 설정 테이블 (사이트/아이디/비번) + 추가/삭제/저장
    - 하단: 로그
 
