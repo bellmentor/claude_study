@@ -278,6 +278,33 @@
 - main.py      : 완료, 동작 확인됨 (python -m dome_site.79dome.main 2026 5)
 
 ────────────────────────────────
+[필우커머스] dome_site/feelwoo/   (2026-07-05, 고도몰/NHN커머스 — 파라브로와 동일 솔루션)
+────────────────────────────────
+- session.py   : 완료 (MODE="debug", accept_downloads=True)
+- login.py     : 완료, 동작 확인됨
+  - LOGIN_URL: https://www.feelwoo.com/member/login.php
+  - 셀렉터: #loginId / #loginPwd / button[type=submit]:has-text('로그인')  (파라브로와 동일)
+  - 로그인 후 main/index.php 이동, URL 에 login.php 없으면 성공. SITE_LABEL="필우커머스"
+- orders.py    : 완료, 동작 확인됨
+  - ORDER_LIST_URL: https://www.feelwoo.com/mypage/order_list.php
+  - 조회기간 직접입력: #picker2 / input[name='wDate[]']:not([id]) (readonly라 JS value 주입, 파라브로 동일)
+  - 주문상태 체크박스 6개(#orderStatus_o1/p1/g1/d1/d2/s1=입금대기~구매확정)만 JS 로 체크.
+    ★ 취소류 제외 두 겹 다 작동: (1)조회에서 반품(_b1)·환불(_r3) 박스를 '안 켜서' 애초에 엑셀에 안 담음.
+      (2)엑셀 '주문상태'는 정상주문=빈칸, 반품/환불주문에만 값(예 '환불완료') → drop_canceled 가 잡음.
+      검증(2026-03 전체상태 실측): 5건 중 '지퍼넥타이-검정' 주문상태='환불완료'(운송장 0). 6개만=4건=26,670원.
+    ※ (앞서 '주문상태 컬럼이 비어 drop_canceled 무효'라 적었던 건 오류였음 — 정상주문만 빈칸, 반품/환불엔 값 있음.)
+  - 조회 버튼: button.cl-find (파라브로는 btn_date_check)
+  - 엑셀: span:has-text('엑셀다운로드') (클래스 없는 스타일 span). 내용은 HTML → 진짜 xlsx 변환.
+  - ★ 파라브로와 달리 정확한 월(1일~말일) 조회로 정상. 파라브로식 기간확대 불필요.
+  - 파일명: yymmdd_필우커머스_매입금.xlsx, 저장: dome_site/feelwoo/downloads/
+- summarize.py : 완료, 동작 확인됨 (파라브로 summarize 와 동일 로직)
+  - 컬럼: 상품주문번호/주문날짜/상품명/옵션/.../상품금액/수량/주문상태/배송업체명/운송장번호/...
+  - 계산: 1)'주문날짜' 기간필터 2)취소류 제외(drop_canceled) 3)'적립금' 제외
+          4) 매입금 = 상품금액 합계(컬럼 그대로 합, 수량 곱 안함) + 배송비(운송장 단위 3,000원)
+  - 검증(2026): 3월 26,670원(4건) / 4월 4,850원(1건) / 5월 16,480원(2건) / 6월 10,030원(2건).
+- main.py      : 완료, 동작 확인됨 (python -m dome_site.feelwoo.main 2026 4)
+
+────────────────────────────────
 [3MRO] dome_site/3mro/   (2026-07-05, 그누보드 계열)
 ────────────────────────────────
 - session.py   : 완료 (MODE="debug", accept_downloads=True). get_context() 추가(팝업 대기용).
