@@ -65,6 +65,10 @@ _collect_status: dict[str, dict[str, Any]] = {}
 _collect_running = False
 _main_loop: asyncio.AbstractEventLoop | None = None
 
+# BearB2B(고도몰) 수집 상태 (매입금 수집과 별개 흐름)
+_bearb2b_status: dict[str, Any] = {}
+_bearb2b_running = False
+
 
 from contextlib import asynccontextmanager
 
@@ -317,12 +321,87 @@ def _read_amounts(year: int, month: int) -> None:
         pass
 
 
+# ── BearB2B subprocess 실행 ───────────────────────────────
+def _run_bearb2b(year: int, month: int) -> None:
+    """별도 스레드에서 python -m BearB2B.main 을 subprocess로 실행한다."""
+    global _bearb2b_running
+    _bearb2b_status.update({"status": "실행 중...", "amount": "", "error": ""})
+    send_log(f"[베어B2B] 수집 시작 ({year}년 {month}월)")
+
+    try:
+        env = {**__import__("os").environ, "WEBUI": "1", "PYTHONIOENCODING": "utf-8"}
+        proc = subprocess.Popen(
+            [PYTHON, "-m", "BearB2B.main", str(year), str(month)],
+            stdout=subprocess.PIPE,
+            stderr=subprocess.STDOUT,
+            cwd=str(ROOT),
+            env=env,
+            text=True,
+            encoding="utf-8",
+            errors="replace",
+        )
+
+        for line in proc.stdout:
+            line = line.rstrip()
+            if line:
+                print(line, flush=True)
+                send_log(line)
+
+        proc.wait()
+
+        if proc.returncode == 0:
+            _bearb2b_status["status"] = "완료"
+            _bearb2b_status["amount"] = _read_bearb2b_amount(year, month)
+            send_log("[베어B2B] 수집 완료")
+        else:
+            _bearb2b_status["status"] = "오류"
+            _bearb2b_status["error"] = f"오류 (종료코드: {proc.returncode})"
+            send_log(f"[베어B2B] 오류 발생 (종료코드: {proc.returncode})")
+
+    except Exception as e:
+        _bearb2b_status["status"] = "오류"
+        _bearb2b_status["error"] = f"{e}"
+        send_log(f"[베어B2B] 실행 오류: {e}")
+    finally:
+        _bearb2b_running = False
+
+
+def _read_bearb2b_amount(year: int, month: int) -> str:
+    """도매_매입금.xlsx 에서 해당 월 베어B2B 매입금을 읽는다. 없으면 빈 문자열."""
+    if not SUMMARY_XLSX.exists():
+        return ""
+    try:
+        df = pd.read_excel(SUMMARY_XLSX)
+        month_label = f"{str(year)[2:]}년{month:02d}월"
+        row = df[(df["몇월"] == month_label) & (df["도매사이트"] == "베어B2B")]
+        if not row.empty:
+            return f"{int(row.iloc[0]['매입금']):,}"
+    except Exception:
+        pass
+    return ""
+
+
 # ── 페이지 ─────────────────────────────────────────────────
+def _static_version() -> int:
+    """정적 파일(app.js/style.css) 최신 수정시각 → 캐시 무력화 버전.
+
+    <script src="/static/app.js?v=..."> 형태로 붙여, 파일이 바뀌면 URL 도 바뀌게 한다.
+    브라우저 캐시 때문에 "코드 고쳤는데 그대로"인 착시(Ctrl+F5 필요)를 없앤다.
+    """
+    static_dir = APP_DIR / "static"
+    try:
+        return max(int((static_dir / f).stat().st_mtime) for f in ("app.js", "style.css"))
+    except OSError:
+        return 0
+
+
 @app.get("/", response_class=HTMLResponse)
 async def index(request: Request):
     """메인 페이지."""
     sites = load_site_list()
-    return templates.TemplateResponse(request, "index.html", {"sites": sites})
+    return templates.TemplateResponse(
+        request, "index.html", {"sites": sites, "v": _static_version()}
+    )
 
 
 # ── 계정 API ──────────────────────────────────────────────
@@ -450,8 +529,41 @@ async def delete_settlement(key: str):
 # ── BearB2B API ────────────────────────────────────────────
 @app.get("/api/bearb2b")
 async def get_bearb2b():
-    """BearB2B 탭 상태를 반환한다(스캐폴드: 준비중 메시지)."""
-    return {"ready": False, "message": "BearB2B 준비 중"}
+    """BearB2B 탭 상태(실행 여부/마지막 결과)를 반환한다."""
+    return {"running": _bearb2b_running, "status": _bearb2b_status}
+
+
+@app.post("/api/bearb2b/run")
+async def run_bearb2b(request: Request):
+    """BearB2B(고도몰) 매입금 수집을 시작한다."""
+    global _bearb2b_running
+    if _bearb2b_running:
+        return {"error": "이미 베어B2B 수집이 진행 중입니다"}
+    if _collect_running:
+        return {"error": "매입금 수집이 진행 중입니다. 끝난 뒤 실행해주세요"}
+
+    body = await request.json()
+    try:
+        year, month = int(body.get("year")), int(body.get("month"))
+    except (TypeError, ValueError):
+        return {"error": "년/월을 올바르게 선택해주세요"}
+
+    _bearb2b_running = True
+    thread = threading.Thread(target=_run_bearb2b, args=(year, month), daemon=True)
+    thread.start()
+    return {"ok": True, "message": "베어B2B 수집을 시작했습니다"}
+
+
+@app.get("/api/bearb2b/status")
+async def bearb2b_status(since: int = 0):
+    """베어B2B 진행상황 + since 이후 새 로그를 반환한다 (HTTP 폴링)."""
+    new_logs = _logs[since:] if since < len(_logs) else []
+    return {
+        "running": _bearb2b_running,
+        "status": _bearb2b_status,
+        "logs": new_logs,
+        "log_count": len(_logs),
+    }
 
 
 # ── 에이준줄눈 폴더 API ────────────────────────────────────

@@ -468,16 +468,107 @@ async function deleteSettlement(key) {
 }
 
 // ── BearB2B 탭 ───────────────────────────────────
+let bearb2bPollTimer = null;
+
 async function loadBearB2B() {
     try {
         const resp = await fetch('/api/bearb2b');
         const data = await resp.json();
-        document.getElementById('bearb2b-result').textContent =
-            data.message || 'BearB2B 준비 중';
+        renderBearB2B(data);
+        // 새로고침/재접속 시 이미 실행 중이면 폴링 재개
+        if (data.running && !bearb2bPollTimer) startBearB2BPolling();
     } catch (e) {
         document.getElementById('bearb2b-result').textContent =
             '불러오기 실패: ' + e.message;
     }
+}
+
+function renderBearB2B(data) {
+    const box = document.getElementById('bearb2b-result');
+    const btn = document.getElementById('bearb2b-run');
+    const st = data.status || {};
+
+    btn.disabled = !!data.running;
+    btn.textContent = data.running ? '수집 중...' : '매입금 수집';
+
+    if (data.running) {
+        box.textContent = '수집 중... 하단 로그를 확인하세요.';
+    } else if (st.error) {
+        box.textContent = '오류: ' + st.error;
+    } else if (st.amount) {
+        box.textContent = `매입금: ${st.amount}원 (${st.status || '완료'})`;
+    } else {
+        box.textContent = '';
+    }
+}
+
+function startBearB2BPolling() {
+    bearb2bPollTimer = setInterval(async () => {
+        try {
+            const resp = await fetch(`/api/bearb2b/status?since=${logSince}`);
+            const data = await resp.json();
+
+            if (Array.isArray(data.logs)) data.logs.forEach(appendLog);
+            if (typeof data.log_count === 'number') logSince = data.log_count;
+
+            renderBearB2B(data);
+
+            if (!data.running) {
+                clearInterval(bearb2bPollTimer);
+                bearb2bPollTimer = null;
+            }
+        } catch (e) { /* 무시 */ }
+    }, 800);
+}
+
+async function runBearB2B() {
+    const year = document.getElementById('bearb2b-year').value;
+    const month = document.getElementById('bearb2b-month').value;
+    const btn = document.getElementById('bearb2b-run');
+
+    btn.disabled = true;
+    btn.textContent = '수집 중...';
+    try {
+        const resp = await fetch('/api/bearb2b/run', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ year, month }),
+        });
+        const data = await resp.json();
+        if (data.error) {
+            appendLog('오류: ' + data.error);
+            btn.disabled = false;
+            btn.textContent = '매입금 수집';
+            return;
+        }
+        appendLog(`베어B2B 수집 요청 전송됨 (${year}년 ${month}월)`);
+        startBearB2BPolling();
+    } catch (e) {
+        appendLog('요청 실패: ' + e.message);
+        btn.disabled = false;
+        btn.textContent = '매입금 수집';
+    }
+}
+
+function initBearB2B() {
+    const ySel = document.getElementById('bearb2b-year');
+    const mSel = document.getElementById('bearb2b-month');
+    if (!ySel) return;
+
+    const nowY = new Date().getFullYear();
+    for (let y = nowY - 3; y <= nowY + 1; y++) {
+        ySel.insertAdjacentHTML('beforeend', `<option value="${y}">${y}년</option>`);
+    }
+    for (let m = 1; m <= 12; m++) {
+        mSel.insertAdjacentHTML('beforeend', `<option value="${m}">${m}월</option>`);
+    }
+    // 기본값: 지난달 (매입금 정산은 보통 전월 기준)
+    const prev = new Date();
+    prev.setMonth(prev.getMonth() - 1);
+    ySel.value = prev.getFullYear();
+    mSel.value = prev.getMonth() + 1;
+
+    document.getElementById('bearb2b-run').addEventListener('click', runBearB2B);
 }
 
 // ── 에이준줄눈 탭 (폴더 선택) ────────────────────
@@ -824,3 +915,4 @@ function initAejulnun() {
 // ── 초기화 ───────────────────────────────────────
 initCalendar();
 initAejulnun();
+initBearB2B();

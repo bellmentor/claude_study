@@ -557,3 +557,11 @@ body {
     white-space: pre-wrap;
     word-break: break-all;
 }
+
+/* ── BearB2B 탭 ──────────────────────────────── */
+.bearb2b-result {
+    margin-top: 18px;
+    font-size: 15px;
+    font-weight: 700;
+    color: #223;
+}

@@ -4,7 +4,7 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>매입금 수집</title>
-    <link rel="stylesheet" href="/static/style.css">
+    <link rel="stylesheet" href="/static/style.css?v={{ v }}">
 </head>
 <body>
 
@@ -143,8 +143,19 @@
 <!-- BearB2B 탭 -->
 <main id="tab-bearb2b" class="tab-content">
     <section class="bearb2b-section">
-        <h3>BearB2B</h3>
-        <p class="settlement-desc">준비 중입니다. 이후 BearB2B 작업 기능이 여기에 추가됩니다.</p>
+        <h3>BearB2B (고도몰)</h3>
+        <p class="settlement-desc">고도몰 관리자 주문통합리스트에서 예치금 주문을 조회해 해당 월 매입금(사용된 총 예치금)을 계산합니다.<br>
+        처음 실행하거나 세션이 만료된 경우, 자동으로 뜨는 Chrome 창에서 고도몰 로그인 후 쇼핑몰 관리자로 들어가면 이어서 진행됩니다.</p>
+
+        <div class="aejulnun-controls" id="bearb2b-controls">
+            <div class="ctl-group">
+                <label>계산 월</label>
+                <select id="bearb2b-year"></select>
+                <select id="bearb2b-month"></select>
+            </div>
+            <button class="btn-primary btn-calc" id="bearb2b-run">매입금 수집</button>
+        </div>
+
         <div id="bearb2b-result" class="bearb2b-result"></div>
     </section>
 </main>
@@ -155,6 +166,6 @@
     <div id="log-box" class="log-box"></div>
 </footer>
 
-<script src="/static/app.js"></script>
+<script src="/static/app.js?v={{ v }}"></script>
 </body>
 </html>
