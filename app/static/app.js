@@ -9,6 +9,7 @@ document.querySelectorAll('.nav-btn').forEach(btn => {
         if (btn.dataset.tab === 'settings') loadAccounts();
         if (btn.dataset.tab === 'settlement') loadSettlement();
         if (btn.dataset.tab === 'aejulnun') loadAejulnun();
+        if (btn.dataset.tab === 'bearb2b') loadBearB2B();
     });
 });
 
@@ -463,6 +464,19 @@ async function deleteSettlement(key) {
         }
     } catch (e) {
         appendLog('정산엑셀 삭제 실패: ' + e.message);
+    }
+}
+
+// ── BearB2B 탭 ───────────────────────────────────
+async function loadBearB2B() {
+    try {
+        const resp = await fetch('/api/bearb2b');
+        const data = await resp.json();
+        document.getElementById('bearb2b-result').textContent =
+            data.message || 'BearB2B 준비 중';
+    } catch (e) {
+        document.getElementById('bearb2b-result').textContent =
+            '불러오기 실패: ' + e.message;
     }
 }
 

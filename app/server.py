@@ -53,6 +53,9 @@ ALLOWED_EXCEL_EXT = (".xlsx", ".xls")
 AEJULNUN_DIR = SETTLEMENT_DIR / "aejulnun"
 AEJULNUN_META = AEJULNUN_DIR / "_meta.json"
 
+# BearB2B: 루트 ./BearB2B 폴더에서 자체 크롤링/계산 코드를 둔다(스캐폴드 단계).
+BEARB2B_DIR = ROOT / "BearB2B"
+
 # ── 로그 버퍼 + WebSocket 브로드캐스터 ─────────────────────
 # 로그는 HTTP 폴링(상태 조회)으로 받는 것을 1차 채널로 한다. WebSocket 은
 # 리로드/늦은 연결 시 메시지를 놓치므로, 버퍼에 쌓아두고 폴링으로 재생한다.
@@ -442,6 +445,13 @@ async def delete_settlement(key: str):
     print(f"[정산엑셀] {key} 삭제됨", flush=True)
     send_log(f"[정산엑셀] {key} 삭제됨")
     return {"ok": True, "slots": _settlement_status()}
+
+
+# ── BearB2B API ────────────────────────────────────────────
+@app.get("/api/bearb2b")
+async def get_bearb2b():
+    """BearB2B 탭 상태를 반환한다(스캐폴드: 준비중 메시지)."""
+    return {"ready": False, "message": "BearB2B 준비 중"}
 
 
 # ── 에이준줄눈 폴더 API ────────────────────────────────────
