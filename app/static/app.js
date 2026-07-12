@@ -8,6 +8,8 @@ document.querySelectorAll('.nav-btn').forEach(btn => {
 
         if (btn.dataset.tab === 'settings') loadAccounts();
         if (btn.dataset.tab === 'settlement') loadSettlement();
+        if (btn.dataset.tab === 'margin') loadMargin();
+        if (btn.dataset.tab === 'adhoc') loadAdhocFebstore();
         if (btn.dataset.tab === 'aejulnun') loadAejulnun();
         if (btn.dataset.tab === 'bearb2b') loadBearB2B();
     });
@@ -467,6 +469,454 @@ async function deleteSettlement(key) {
     }
 }
 
+// ── 정산마진확인 탭 ──────────────────────────────
+async function loadMargin() {
+    const box = document.getElementById('margin-upload-card');
+    document.getElementById('margin-result').innerHTML = '';
+    try {
+        const resp = await fetch('/api/margin');
+        const data = await resp.json();
+        renderMarginCard(data);
+    } catch (e) {
+        box.innerHTML = '<div class="settlement-error">불러오기 실패: ' + escapeHtml(e.message) + '</div>';
+    }
+}
+
+function renderMarginCard(data) {
+    const box = document.getElementById('margin-upload-card');
+    const calcBar = document.getElementById('margin-calc-bar');
+    calcBar.style.display = data.uploaded ? 'block' : 'none';
+
+    const card = document.createElement('div');
+    card.className = 'settlement-card';
+    if (data.uploaded) card.classList.add('is-uploaded');
+
+    const badge = data.uploaded
+        ? `<span class="settlement-badge on">● 업로드됨</span>`
+        : `<span class="settlement-badge off">○ 미업로드</span>`;
+
+    const fileRow = data.uploaded
+        ? `<div class="settlement-file-row">
+               <span class="file-info"><span class="file-ic">📄</span>${escapeHtml(data.filename)}<span class="file-time">${escapeHtml(data.uploaded_at)}</span></span>
+               <button class="btn-settle-del" id="margin-del">삭제</button>
+           </div>`
+        : '';
+
+    card.innerHTML = `
+        <div class="settlement-card-head">
+            <span class="settlement-title">정산 작업 엑셀 (대량 시트)</span>
+            ${badge}
+        </div>
+        <div class="dropzone" id="margin-dropzone">
+            <div class="dropzone-ic">⬆️</div>
+            <div class="dropzone-text" id="margin-dz-text">여기로 엑셀 파일을 드래그하거나</div>
+            <button class="btn-secondary btn-browse" type="button" id="margin-browse">파일 찾기</button>
+            <input type="file" id="margin-file" accept=".xlsx,.xls" style="display:none">
+        </div>
+        ${fileRow}
+    `;
+    box.innerHTML = '';
+    box.appendChild(card);
+
+    const zone = document.getElementById('margin-dropzone');
+    const fileInput = document.getElementById('margin-file');
+    const browseBtn = document.getElementById('margin-browse');
+    const dzText = document.getElementById('margin-dz-text');
+    const baseText = dzText.textContent;
+
+    browseBtn.addEventListener('click', () => fileInput.click());
+    fileInput.addEventListener('change', () => {
+        if (fileInput.files.length) uploadMargin(fileInput.files[0]);
+    });
+    zone.addEventListener('dragover', (e) => {
+        e.preventDefault();
+        zone.classList.add('dragover');
+        dzText.textContent = '여기에 놓으세요';
+    });
+    zone.addEventListener('dragleave', () => {
+        zone.classList.remove('dragover');
+        dzText.textContent = baseText;
+    });
+    zone.addEventListener('drop', (e) => {
+        e.preventDefault();
+        zone.classList.remove('dragover');
+        dzText.textContent = baseText;
+        if (e.dataTransfer.files.length) uploadMargin(e.dataTransfer.files[0]);
+    });
+
+    const delBtn = document.getElementById('margin-del');
+    if (delBtn) delBtn.addEventListener('click', deleteMargin);
+}
+
+async function uploadMargin(file) {
+    if (!hasExcelExt(file.name)) {
+        alert('엑셀 파일(.xlsx, .xls)만 업로드할 수 있습니다.');
+        return;
+    }
+    try {
+        const resp = await fetch('/api/margin/upload', {
+            method: 'POST',
+            headers: { 'X-Filename': encodeURIComponent(file.name) },
+            body: file,
+        });
+        const data = await resp.json();
+        if (data.error) {
+            appendLog('정산마진확인 업로드 오류: ' + data.error);
+            alert('업로드 실패: ' + data.error);
+        } else {
+            appendLog(`정산마진확인 업로드됨: ${file.name}`);
+            document.getElementById('margin-result').innerHTML = '';
+            renderMarginCard(data);
+        }
+    } catch (e) {
+        appendLog('정산마진확인 업로드 실패: ' + e.message);
+    }
+}
+
+async function deleteMargin() {
+    if (!confirm('업로드된 정산 작업 엑셀을 삭제할까요?')) return;
+    try {
+        const resp = await fetch('/api/margin', { method: 'DELETE' });
+        const data = await resp.json();
+        if (data.error) {
+            appendLog('정산마진확인 삭제 오류: ' + data.error);
+            alert('삭제 실패: ' + data.error);
+        } else {
+            appendLog('정산마진확인 삭제됨');
+            document.getElementById('margin-result').innerHTML = '';
+            renderMarginCard(data);
+        }
+    } catch (e) {
+        appendLog('정산마진확인 삭제 실패: ' + e.message);
+    }
+}
+
+async function doMarginCalc() {
+    const btn = document.getElementById('margin-calc-run');
+    const out = document.getElementById('margin-result');
+    btn.disabled = true;
+    btn.textContent = '계산 중...';
+    out.innerHTML = '<div class="aejulnun-empty">계산 중...</div>';
+    try {
+        const resp = await fetch('/api/margin/calc', { method: 'POST' });
+        const data = await resp.json();
+        if (data.error) {
+            out.innerHTML = '<div class="settlement-error">' + escapeHtml(data.error) + '</div>';
+        } else {
+            renderMarginResult(data);
+            appendLog(`정산마진확인 계산: ${data.matched_count}/${data.total_count}건 매칭, 마진합계 ${won(data.margin_sum)}`);
+        }
+    } catch (e) {
+        out.innerHTML = '<div class="settlement-error">계산 실패: ' + escapeHtml(e.message) + '</div>';
+    } finally {
+        btn.disabled = false;
+        btn.textContent = '매입금 매칭 계산하기';
+    }
+}
+
+function renderMarginResult(data) {
+    const out = document.getElementById('margin-result');
+    const results = data.results || [];
+    if (!results.length) {
+        out.innerHTML = '<div class="aejulnun-empty">계산할 주문건이 없습니다.</div>';
+        return;
+    }
+
+    const summary = `
+        <div class="aejulnun-summary margin-summary">
+            <span class="aejulnun-badge">전체 ${data.total_count}건</span>
+            <span class="aejulnun-count">매칭 ${data.matched_count}건</span>
+            <span class="margin-unmatched">매칭안됨 ${data.unmatched_count}건</span>
+            <span class="margin-total-badge">마진합계 ${won(data.margin_sum)}</span>
+            <span class="margin-total-badge">평균 마진율 ${data.avg_margin_rate != null ? data.avg_margin_rate + '%' : '—'}</span>
+            <a class="btn-secondary margin-download-btn" href="/api/margin/download">⬇ 결과 엑셀 다운로드</a>
+        </div>
+    `;
+
+    const rows = results.map(r => `
+        <tr class="${r.matched ? '' : 'has-err'}">
+            <td>${escapeHtml(r.date)}</td>
+            <td>${escapeHtml(r.market)}</td>
+            <td>${escapeHtml(r.site_name)}</td>
+            <td>${escapeHtml(r.code)}</td>
+            <td class="product-cell">${escapeHtml(r.product)}</td>
+            <td>${r.qty}</td>
+            <td>${escapeHtml(r.recipient)}</td>
+            <td class="won">${won(r.revenue)}</td>
+            <td class="won">${won(r.cost)}</td>
+            <td class="won ${r.matched && r.margin < 0 ? 'margin-neg' : ''}">${won(r.margin)}</td>
+            <td>${r.margin_rate != null ? r.margin_rate + '%' : '—'}</td>
+            <td class="err">${escapeHtml(r.reason || '')}</td>
+        </tr>
+    `).join('');
+
+    out.innerHTML = `
+        ${summary}
+        <div class="aejulnun-calc-wrap margin-table-wrap">
+            <table class="aejulnun-calc-table margin-table">
+                <thead>
+                    <tr>
+                        <th>주문일자</th><th>쇼핑몰</th><th>도매처</th><th>판매자상품코드</th>
+                        <th>상품명</th><th>수량</th><th>수령자</th>
+                        <th>정산예정금액(배송비포함)</th><th>매입금</th><th>마진</th><th>마진율</th><th>비고</th>
+                    </tr>
+                </thead>
+                <tbody>${rows}</tbody>
+            </table>
+        </div>
+    `;
+}
+
+function initMargin() {
+    document.getElementById('margin-calc-run').addEventListener('click', doMarginCalc);
+}
+
+// ── 그때그때 탭: 페브스토어 판매가/매입가 비교 ────
+async function loadAdhocFebstore() {
+    const box = document.getElementById('adhoc-febstore-upload-card');
+    try {
+        const resp = await fetch('/api/adhoc/febstore');
+        const data = await resp.json();
+        renderAdhocFebstoreCard(data);
+        if (data.uploaded) loadAdhocFebstoreTable();
+    } catch (e) {
+        box.innerHTML = '<div class="settlement-error">불러오기 실패: ' + escapeHtml(e.message) + '</div>';
+    }
+}
+
+function renderAdhocFebstoreCard(data) {
+    const box = document.getElementById('adhoc-febstore-upload-card');
+    const controls = document.getElementById('adhoc-febstore-controls');
+    controls.style.display = data.uploaded ? 'flex' : 'none';
+
+    const card = document.createElement('div');
+    card.className = 'settlement-card';
+    if (data.uploaded) card.classList.add('is-uploaded');
+
+    const badge = data.uploaded
+        ? `<span class="settlement-badge on">● 업로드됨</span>`
+        : `<span class="settlement-badge off">○ 미업로드</span>`;
+
+    const fileRow = data.uploaded
+        ? `<div class="settlement-file-row">
+               <span class="file-info"><span class="file-ic">📄</span>${escapeHtml(data.filename)}<span class="file-time">${escapeHtml(data.uploaded_at)}</span></span>
+               <button class="btn-settle-del" id="adhoc-febstore-del">삭제</button>
+           </div>`
+        : '';
+
+    card.innerHTML = `
+        <div class="settlement-card-head">
+            <span class="settlement-title">페브스토어류 엑셀 (도매처별 시트)</span>
+            ${badge}
+        </div>
+        <div class="dropzone" id="adhoc-febstore-dropzone">
+            <div class="dropzone-ic">⬆️</div>
+            <div class="dropzone-text" id="adhoc-febstore-dz-text">여기로 엑셀 파일을 드래그하거나</div>
+            <button class="btn-secondary btn-browse" type="button" id="adhoc-febstore-browse">파일 찾기</button>
+            <input type="file" id="adhoc-febstore-file" accept=".xlsx,.xls" style="display:none">
+        </div>
+        ${fileRow}
+    `;
+    box.innerHTML = '';
+    box.appendChild(card);
+
+    const zone = document.getElementById('adhoc-febstore-dropzone');
+    const fileInput = document.getElementById('adhoc-febstore-file');
+    const browseBtn = document.getElementById('adhoc-febstore-browse');
+    const dzText = document.getElementById('adhoc-febstore-dz-text');
+    const baseText = dzText.textContent;
+
+    browseBtn.addEventListener('click', () => fileInput.click());
+    fileInput.addEventListener('change', () => {
+        if (fileInput.files.length) uploadAdhocFebstore(fileInput.files[0]);
+    });
+    zone.addEventListener('dragover', (e) => {
+        e.preventDefault();
+        zone.classList.add('dragover');
+        dzText.textContent = '여기에 놓으세요';
+    });
+    zone.addEventListener('dragleave', () => {
+        zone.classList.remove('dragover');
+        dzText.textContent = baseText;
+    });
+    zone.addEventListener('drop', (e) => {
+        e.preventDefault();
+        zone.classList.remove('dragover');
+        dzText.textContent = baseText;
+        if (e.dataTransfer.files.length) uploadAdhocFebstore(e.dataTransfer.files[0]);
+    });
+
+    const delBtn = document.getElementById('adhoc-febstore-del');
+    if (delBtn) delBtn.addEventListener('click', deleteAdhocFebstore);
+}
+
+async function uploadAdhocFebstore(file) {
+    if (!hasExcelExt(file.name)) {
+        alert('엑셀 파일(.xlsx, .xls)만 업로드할 수 있습니다.');
+        return;
+    }
+    try {
+        const resp = await fetch('/api/adhoc/febstore/upload', {
+            method: 'POST',
+            headers: { 'X-Filename': encodeURIComponent(file.name) },
+            body: file,
+        });
+        const data = await resp.json();
+        if (data.error) {
+            appendLog('그때그때 업로드 오류: ' + data.error);
+            alert('업로드 실패: ' + data.error);
+        } else {
+            appendLog(`그때그때 페브스토어 업로드됨: ${file.name}`);
+            document.getElementById('adhoc-febstore-table').innerHTML = '';
+            renderAdhocFebstoreCard(data);
+            loadAdhocFebstoreTable();
+        }
+    } catch (e) {
+        appendLog('그때그때 업로드 실패: ' + e.message);
+    }
+}
+
+async function deleteAdhocFebstore() {
+    if (!confirm('업로드된 페브스토어 엑셀과 조회 결과를 모두 삭제할까요?')) return;
+    try {
+        const resp = await fetch('/api/adhoc/febstore', { method: 'DELETE' });
+        const data = await resp.json();
+        if (data.error) {
+            appendLog('그때그때 삭제 오류: ' + data.error);
+            alert('삭제 실패: ' + data.error);
+        } else {
+            appendLog('그때그때 페브스토어 삭제됨');
+            document.getElementById('adhoc-febstore-table').innerHTML = '';
+            renderAdhocFebstoreCard(data);
+        }
+    } catch (e) {
+        appendLog('그때그때 삭제 실패: ' + e.message);
+    }
+}
+
+async function loadAdhocFebstoreTable() {
+    const box = document.getElementById('adhoc-febstore-table');
+    box.innerHTML = '<div class="aejulnun-empty">불러오는 중...</div>';
+    try {
+        const resp = await fetch('/api/adhoc/febstore/table');
+        const data = await resp.json();
+        if (data.error) {
+            box.innerHTML = '<div class="settlement-error">' + escapeHtml(data.error) + '</div>';
+        } else {
+            renderAdhocFebstoreTable(data);
+        }
+    } catch (e) {
+        box.innerHTML = '<div class="settlement-error">불러오기 실패: ' + escapeHtml(e.message) + '</div>';
+    }
+}
+
+function renderAdhocFebstoreTable(data) {
+    const box = document.getElementById('adhoc-febstore-table');
+    const rows = data.rows || [];
+    if (!rows.length) {
+        box.innerHTML = '<div class="aejulnun-empty">상품이 없습니다.</div>';
+        return;
+    }
+
+    const shipShow = (v) => (v === 0 ? '무료' : won(v));
+
+    const body = rows.map(r => {
+        const isOwner = r.slug === 'ownerclan';
+        const costText = isOwner ? won(r.cost) : '미구현';
+        let shipText;
+        if (!isOwner) shipText = '미구현';
+        else if (r.cost_ship != null) shipText = shipShow(r.cost_ship);
+        else if (r.ship_note) shipText = escapeHtml(r.ship_note);
+        else shipText = '—';
+        return `<tr class="${isOwner && r.note ? 'has-err' : ''}">
+            <td>${escapeHtml(r.code)}</td>
+            <td>${escapeHtml(r.site_name)}</td>
+            <td>${escapeHtml(r.status)}</td>
+            <td class="won">${won(r.price)}</td>
+            <td class="won">${shipShow(r.ship)}</td>
+            <td class="won">${costText}</td>
+            <td class="won">${shipText}</td>
+            <td class="err">${escapeHtml(r.note || '')}</td>
+        </tr>`;
+    }).join('');
+
+    box.innerHTML = `
+        <div class="aejulnun-summary">
+            <span class="aejulnun-badge">전체 ${rows.length}건</span>
+            <a class="btn-secondary margin-download-btn" href="/api/adhoc/febstore/download">⬇ 결과 엑셀 다운로드</a>
+        </div>
+        <div class="aejulnun-calc-wrap margin-table-wrap">
+            <table class="aejulnun-calc-table margin-table">
+                <thead>
+                    <tr>
+                        <th>판매자관리코드</th><th>도매처</th><th>판매상태</th>
+                        <th>판매가</th><th>배송비</th><th>매입가</th><th>매입배송비</th><th>비고</th>
+                    </tr>
+                </thead>
+                <tbody>${body}</tbody>
+            </table>
+        </div>
+    `;
+}
+
+let adhocFebstorePollTimer = null;
+
+async function runAdhocFebstorePrice() {
+    const btn = document.getElementById('adhoc-febstore-run');
+    const statusEl = document.getElementById('adhoc-febstore-run-status');
+    btn.disabled = true;
+    btn.textContent = '조회 중...';
+    try {
+        const resp = await fetch('/api/adhoc/febstore/run', { method: 'POST' });
+        const data = await resp.json();
+        if (data.error) {
+            appendLog('오너클랜 매입가 조회 오류: ' + data.error);
+            alert(data.error);
+            btn.disabled = false;
+            btn.textContent = '오너클랜 매입가 조회';
+            return;
+        }
+        appendLog(data.message || '오너클랜 매입가 조회 시작');
+        startAdhocFebstorePolling();
+    } catch (e) {
+        appendLog('요청 실패: ' + e.message);
+        btn.disabled = false;
+        btn.textContent = '오너클랜 매입가 조회';
+    }
+}
+
+function startAdhocFebstorePolling() {
+    adhocFebstorePollTimer = setInterval(async () => {
+        try {
+            const resp = await fetch(`/api/adhoc/febstore/status?since=${logSince}`);
+            const data = await resp.json();
+
+            if (Array.isArray(data.logs)) data.logs.forEach(appendLog);
+            if (typeof data.log_count === 'number') logSince = data.log_count;
+
+            const st = data.status || {};
+            const statusEl = document.getElementById('adhoc-febstore-run-status');
+            if (statusEl && st.total) {
+                statusEl.textContent = `${st.done || 0}/${st.total} 조회 중...`;
+            }
+
+            if (!data.running) {
+                clearInterval(adhocFebstorePollTimer);
+                adhocFebstorePollTimer = null;
+                const btn = document.getElementById('adhoc-febstore-run');
+                btn.disabled = false;
+                btn.textContent = '오너클랜 매입가 조회';
+                if (statusEl) statusEl.textContent = st.status === '오류' ? ('오류: ' + (st.error || '')) : '';
+                loadAdhocFebstoreTable();
+            }
+        } catch (e) { /* 무시 */ }
+    }, 1000);
+}
+
+function initAdhocFebstore() {
+    document.getElementById('adhoc-febstore-run').addEventListener('click', runAdhocFebstorePrice);
+}
+
 // ── BearB2B 탭 ───────────────────────────────────
 let bearb2bPollTimer = null;
 
@@ -914,5 +1364,7 @@ function initAejulnun() {
 
 // ── 초기화 ───────────────────────────────────────
 initCalendar();
+initMargin();
+initAdhocFebstore();
 initAejulnun();
 initBearB2B();

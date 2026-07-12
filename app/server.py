@@ -7,6 +7,7 @@ stdout 출력을 WebSocket으로 브라우저에 실시간 전달한다.
 from __future__ import annotations
 
 import asyncio
+import re
 import subprocess
 import sys
 import threading
@@ -24,10 +25,18 @@ for _stream in (sys.stdout, sys.stderr):
 import openpyxl
 import pandas as pd
 from fastapi import FastAPI, WebSocket, WebSocketDisconnect
-from fastapi.responses import HTMLResponse
+from fastapi.responses import HTMLResponse, Response
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 from starlette.requests import Request
+
+from app.adhoc_febstore import (
+    build_febstore_excel,
+    has_any_site_sheet as febstore_has_any_site_sheet,
+    ownerclan_codes as febstore_ownerclan_codes,
+    parse_febstore,
+)
+from app.margin import build_result_excel, calc_margin, has_daeryang_sheet
 
 # ── 경로 설정 ──────────────────────────────────────────────
 ROOT = Path(__file__).resolve().parents[1]
@@ -53,6 +62,21 @@ ALLOWED_EXCEL_EXT = (".xlsx", ".xls")
 AEJULNUN_DIR = SETTLEMENT_DIR / "aejulnun"
 AEJULNUN_META = AEJULNUN_DIR / "_meta.json"
 
+# 그때그때: 1회성/비정기 요청을 위한 성장형 스크래치 공간. 도구별로
+# 정산엑셀/adhoc/<도구이름>... 로 네임스페이스를 나눈다.
+# 1호 도구 "페브스토어 판매가/매입가 비교":
+ADHOC_DIR = SETTLEMENT_DIR / "adhoc"
+ADHOC_FEBSTORE_FILE = ADHOC_DIR / "febstore.xlsx"
+ADHOC_FEBSTORE_MANIFEST = ADHOC_DIR / "febstore_manifest.json"
+ADHOC_FEBSTORE_PRICES = ADHOC_DIR / "febstore_prices.json"  # 오너클랜 조회 결과 캐시
+ADHOC_FEBSTORE_CODES_TMP = ADHOC_DIR / "febstore_codes_tmp.json"  # subprocess 입력용
+
+# 정산마진확인: 정산 작업 중인 엑셀(원본/대량/줄눈 시트)을 단일 파일로 업로드받는
+# 전용 슬롯. 정산엑셀관리(SETTLEMENT_SLOTS)와는 별개 파일/별개 탭이다.
+MARGIN_DIR = SETTLEMENT_DIR / "margin"
+MARGIN_FILE = MARGIN_DIR / "work.xlsx"
+MARGIN_MANIFEST = MARGIN_DIR / "_manifest.json"
+
 # BearB2B: 루트 ./BearB2B 폴더에서 자체 크롤링/계산 코드를 둔다(스캐폴드 단계).
 BEARB2B_DIR = ROOT / "BearB2B"
 
@@ -68,6 +92,10 @@ _main_loop: asyncio.AbstractEventLoop | None = None
 # BearB2B(고도몰) 수집 상태 (매입금 수집과 별개 흐름)
 _bearb2b_status: dict[str, Any] = {}
 _bearb2b_running = False
+
+# 그때그때 - 페브스토어 오너클랜 매입가 조회 상태
+_adhoc_febstore_run_status: dict[str, Any] = {}
+_adhoc_febstore_running = False
 
 
 from contextlib import asynccontextmanager
@@ -183,6 +211,103 @@ def _settlement_status() -> list[dict[str, Any]]:
             "uploaded_at": meta.get("uploaded_at", "") if uploaded else "",
         })
     return slots
+
+
+# ── 정산마진확인 헬퍼 ──────────────────────────────────────
+def _load_margin_manifest() -> dict[str, str]:
+    """정산엑셀/margin/_manifest.json 을 읽어 반환한다. 없으면 빈 dict."""
+    if not MARGIN_MANIFEST.exists():
+        return {}
+    try:
+        import json
+        return json.loads(MARGIN_MANIFEST.read_text(encoding="utf-8"))
+    except Exception:
+        return {}
+
+
+def _save_margin_manifest(manifest: dict[str, str]) -> None:
+    """정산엑셀/margin/_manifest.json 에 저장한다."""
+    import json
+    MARGIN_DIR.mkdir(parents=True, exist_ok=True)
+    MARGIN_MANIFEST.write_text(json.dumps(manifest, ensure_ascii=False, indent=2), encoding="utf-8")
+
+
+def _margin_status() -> dict[str, Any]:
+    """정산마진확인 업로드 상태(업로드여부/원본파일명/업로드시각)를 반환한다."""
+    uploaded = MARGIN_FILE.exists()
+    manifest = _load_margin_manifest()
+    return {
+        "uploaded": uploaded,
+        "filename": manifest.get("original", "") if uploaded else "",
+        "uploaded_at": manifest.get("uploaded_at", "") if uploaded else "",
+    }
+
+
+# ── 그때그때: 페브스토어 판매가/매입가 비교 헬퍼 ──────────
+def _load_adhoc_febstore_manifest() -> dict[str, str]:
+    """정산엑셀/adhoc/febstore_manifest.json 을 읽어 반환한다. 없으면 빈 dict."""
+    if not ADHOC_FEBSTORE_MANIFEST.exists():
+        return {}
+    try:
+        import json
+        return json.loads(ADHOC_FEBSTORE_MANIFEST.read_text(encoding="utf-8"))
+    except Exception:
+        return {}
+
+
+def _save_adhoc_febstore_manifest(manifest: dict[str, str]) -> None:
+    """정산엑셀/adhoc/febstore_manifest.json 에 저장한다."""
+    import json
+    ADHOC_DIR.mkdir(parents=True, exist_ok=True)
+    ADHOC_FEBSTORE_MANIFEST.write_text(json.dumps(manifest, ensure_ascii=False, indent=2), encoding="utf-8")
+
+
+def _adhoc_febstore_status() -> dict[str, Any]:
+    """페브스토어 업로드 상태(업로드여부/원본파일명/업로드시각)를 반환한다."""
+    uploaded = ADHOC_FEBSTORE_FILE.exists()
+    manifest = _load_adhoc_febstore_manifest()
+    return {
+        "uploaded": uploaded,
+        "filename": manifest.get("original", "") if uploaded else "",
+        "uploaded_at": manifest.get("uploaded_at", "") if uploaded else "",
+    }
+
+
+def _load_adhoc_febstore_prices() -> dict[str, dict[str, Any]]:
+    """지난번 오너클랜 매입가 조회 결과 캐시를 읽는다. 없으면 빈 dict."""
+    if not ADHOC_FEBSTORE_PRICES.exists():
+        return {}
+    try:
+        import json
+        return json.loads(ADHOC_FEBSTORE_PRICES.read_text(encoding="utf-8"))
+    except Exception:
+        return {}
+
+
+def _adhoc_febstore_table() -> dict[str, Any]:
+    """업로드된 페브스토어 엑셀을 파싱하고, 캐시된 오너클랜 매입가를 병합해 반환한다."""
+    sites = load_site_list()
+    rows = parse_febstore(ADHOC_FEBSTORE_FILE, sites)
+    prices = _load_adhoc_febstore_prices()
+    for row in rows:
+        if row["slug"] != "ownerclan":
+            continue
+        code = row["code"]
+        bare = code[6:] if code.upper().startswith("OWNER_") else code
+        cached = prices.get(bare)
+        if cached:
+            row["cost"] = cached.get("cost")
+            cost_ship = cached.get("cost_ship")
+            ship_note = cached.get("ship_note", "")
+            # 예전 캐시에 남아있을 수 있는 "개별배송 착불" 자리표시값(999999) 보정.
+            # (dome_site/ownerclan/product_price.py 의 SHIP_UNSET_SENTINEL 과 동일 규칙)
+            if cost_ship == 999999:
+                cost_ship = None
+                ship_note = ship_note or "개별배송 착불(금액 미확정)"
+            row["cost_ship"] = cost_ship
+            row["ship_note"] = ship_note
+            row["note"] = cached.get("error", "")
+    return {"rows": rows, "count": len(rows)}
 
 
 # ── 에이준줄눈 폴더 헬퍼 ───────────────────────────────────
@@ -381,6 +506,64 @@ def _read_bearb2b_amount(year: int, month: int) -> str:
     return ""
 
 
+# ── 그때그때: 페브스토어 오너클랜 매입가 조회 subprocess ──
+def _run_adhoc_febstore_price(codes: list[str]) -> None:
+    """별도 스레드에서 python -m dome_site.ownerclan.product_price 를 subprocess로 실행한다.
+
+    조회 대상 코드는 임시 입력 파일(ADHOC_FEBSTORE_CODES_TMP)로 넘기고, 결과는
+    ADHOC_FEBSTORE_PRICES 에 직접 쓰게 해 다음 조회까지 캐시로 남긴다.
+    """
+    global _adhoc_febstore_running
+    import json
+
+    _adhoc_febstore_run_status.update({"status": "실행 중...", "error": "", "done": 0, "total": len(codes)})
+    send_log(f"[그때그때] 오너클랜 매입가 조회 시작 ({len(codes)}개)")
+
+    try:
+        ADHOC_DIR.mkdir(parents=True, exist_ok=True)
+        ADHOC_FEBSTORE_CODES_TMP.write_text(json.dumps(codes, ensure_ascii=False), encoding="utf-8")
+
+        env = {**__import__("os").environ, "WEBUI": "1", "PYTHONIOENCODING": "utf-8"}
+        proc = subprocess.Popen(
+            [PYTHON, "-m", "dome_site.ownerclan.product_price",
+             str(ADHOC_FEBSTORE_CODES_TMP), str(ADHOC_FEBSTORE_PRICES)],
+            stdout=subprocess.PIPE,
+            stderr=subprocess.STDOUT,
+            cwd=str(ROOT),
+            env=env,
+            text=True,
+            encoding="utf-8",
+            errors="replace",
+        )
+
+        for line in proc.stdout:
+            line = line.rstrip()
+            if line:
+                print(line, flush=True)
+                send_log(line)
+                m = re.search(r"매입가 조회.*?(\d+)/(\d+)", line)
+                if m:
+                    _adhoc_febstore_run_status["done"] = int(m.group(1))
+                    _adhoc_febstore_run_status["total"] = int(m.group(2))
+
+        proc.wait()
+
+        if proc.returncode == 0:
+            _adhoc_febstore_run_status["status"] = "완료"
+            send_log("[그때그때] 오너클랜 매입가 조회 완료")
+        else:
+            _adhoc_febstore_run_status["status"] = "오류"
+            _adhoc_febstore_run_status["error"] = f"오류 (종료코드: {proc.returncode})"
+            send_log(f"[그때그때] 오류 발생 (종료코드: {proc.returncode})")
+
+    except Exception as e:
+        _adhoc_febstore_run_status["status"] = "오류"
+        _adhoc_febstore_run_status["error"] = f"{e}"
+        send_log(f"[그때그때] 실행 오류: {e}")
+    finally:
+        _adhoc_febstore_running = False
+
+
 # ── 페이지 ─────────────────────────────────────────────────
 def _static_version() -> int:
     """정적 파일(app.js/style.css) 최신 수정시각 → 캐시 무력화 버전.
@@ -524,6 +707,257 @@ async def delete_settlement(key: str):
     print(f"[정산엑셀] {key} 삭제됨", flush=True)
     send_log(f"[정산엑셀] {key} 삭제됨")
     return {"ok": True, "slots": _settlement_status()}
+
+
+# ── 정산마진확인 API ───────────────────────────────────────
+@app.get("/api/margin")
+async def get_margin():
+    """정산마진확인 업로드 상태를 반환한다."""
+    return _margin_status()
+
+
+@app.post("/api/margin/upload")
+async def upload_margin(request: Request):
+    """정산 작업 엑셀을 업로드한다(raw body). '대량' 시트가 없으면 거부한다.
+
+    원본 파일명은 X-Filename 헤더로 전달한다(정산엑셀 업로드와 동일 이유·패턴).
+    """
+    import urllib.parse
+    filename = urllib.parse.unquote(request.headers.get("x-filename", ""), encoding="utf-8")
+
+    ext = Path(filename).suffix.lower()
+    if ext not in ALLOWED_EXCEL_EXT:
+        return {"error": "엑셀 파일(.xlsx, .xls)만 업로드할 수 있습니다"}
+
+    data = await request.body()
+    if not data:
+        return {"error": "빈 파일입니다"}
+
+    MARGIN_DIR.mkdir(parents=True, exist_ok=True)
+    tmp = MARGIN_DIR / f"~upload_{filename}"
+    try:
+        tmp.write_bytes(data)
+    except PermissionError:
+        return {"error": "파일이 열려있어 저장할 수 없습니다. 엑셀에서 닫고 다시 시도하세요."}
+
+    if not has_daeryang_sheet(tmp):
+        tmp.unlink(missing_ok=True)
+        return {"error": "'대량' 시트를 찾을 수 없습니다. 대량 시트가 있는 정산 작업 엑셀을 업로드하세요."}
+
+    try:
+        tmp.replace(MARGIN_FILE)
+    except PermissionError:
+        tmp.unlink(missing_ok=True)
+        return {"error": "파일이 열려있어 저장할 수 없습니다. 엑셀에서 닫고 다시 시도하세요."}
+
+    import datetime
+    _save_margin_manifest({
+        "original": filename,
+        "uploaded_at": datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
+    })
+
+    print(f"[정산마진확인] '{filename}' 업로드됨 ({len(data):,} bytes)", flush=True)
+    send_log(f"[정산마진확인] '{filename}' 업로드됨")
+    return {"ok": True, **_margin_status()}
+
+
+@app.delete("/api/margin")
+async def delete_margin():
+    """업로드된 정산마진확인 엑셀을 삭제한다."""
+    if MARGIN_FILE.exists():
+        try:
+            MARGIN_FILE.unlink()
+        except PermissionError:
+            return {"error": "파일이 열려있어 삭제할 수 없습니다. 엑셀에서 닫고 다시 시도하세요."}
+
+    manifest = _load_margin_manifest()
+    manifest.clear()
+    _save_margin_manifest(manifest)
+
+    print("[정산마진확인] 업로드 파일 삭제됨", flush=True)
+    send_log("[정산마진확인] 업로드 파일 삭제됨")
+    return {"ok": True, **_margin_status()}
+
+
+@app.post("/api/margin/calc")
+async def calc_margin_api():
+    """업로드된 정산 작업 엑셀의 '대량' 시트로 주문건별 마진을 계산한다."""
+    if not MARGIN_FILE.exists():
+        return {"error": "정산 작업 엑셀을 먼저 업로드하세요."}
+    try:
+        result = calc_margin(MARGIN_FILE)
+    except Exception as e:
+        return {"error": f"계산 실패: {e}"}
+
+    print(
+        f"[정산마진확인] 계산: {result['total_count']}건 중 매칭 {result['matched_count']}건, "
+        f"마진합계 {result['margin_sum']:,}원",
+        flush=True,
+    )
+    send_log(
+        f"[정산마진확인] 계산: {result['matched_count']}/{result['total_count']}건 매칭, "
+        f"마진합계 {result['margin_sum']:,}원"
+    )
+    return result
+
+
+@app.get("/api/margin/download")
+async def download_margin():
+    """계산 결과를 엑셀로 다시 계산해 다운로드한다."""
+    if not MARGIN_FILE.exists():
+        return {"error": "정산 작업 엑셀을 먼저 업로드하세요."}
+    try:
+        result = calc_margin(MARGIN_FILE)
+        content = build_result_excel(result)
+    except Exception as e:
+        return {"error": f"다운로드 실패: {e}"}
+
+    import datetime
+    import urllib.parse
+    filename = f"정산마진확인_{datetime.datetime.now():%Y%m%d_%H%M}.xlsx"
+    quoted = urllib.parse.quote(filename)
+    send_log(f"[정산마진확인] 결과 엑셀 다운로드: {filename}")
+    return Response(
+        content=content,
+        media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        headers={"Content-Disposition": f"attachment; filename=\"margin_result.xlsx\"; filename*=UTF-8''{quoted}"},
+    )
+
+
+# ── 그때그때: 페브스토어 판매가/매입가 비교 API ────────────
+@app.get("/api/adhoc/febstore")
+async def get_adhoc_febstore():
+    """페브스토어 업로드 상태를 반환한다."""
+    return _adhoc_febstore_status()
+
+
+@app.post("/api/adhoc/febstore/upload")
+async def upload_adhoc_febstore(request: Request):
+    """페브스토어류 엑셀을 업로드한다(raw body). 도매처 시트가 하나도 없으면 거부한다."""
+    import urllib.parse
+    filename = urllib.parse.unquote(request.headers.get("x-filename", ""), encoding="utf-8")
+
+    ext = Path(filename).suffix.lower()
+    if ext not in ALLOWED_EXCEL_EXT:
+        return {"error": "엑셀 파일(.xlsx, .xls)만 업로드할 수 있습니다"}
+
+    data = await request.body()
+    if not data:
+        return {"error": "빈 파일입니다"}
+
+    ADHOC_DIR.mkdir(parents=True, exist_ok=True)
+    tmp = ADHOC_DIR / f"~upload_{filename}"
+    try:
+        tmp.write_bytes(data)
+    except PermissionError:
+        return {"error": "파일이 열려있어 저장할 수 없습니다. 엑셀에서 닫고 다시 시도하세요."}
+
+    if not febstore_has_any_site_sheet(tmp, load_site_list()):
+        tmp.unlink(missing_ok=True)
+        return {"error": "도매처 이름의 시트를 찾을 수 없습니다(예: 오너클랜/JTC/히트/식자재)."}
+
+    try:
+        tmp.replace(ADHOC_FEBSTORE_FILE)
+    except PermissionError:
+        tmp.unlink(missing_ok=True)
+        return {"error": "파일이 열려있어 저장할 수 없습니다. 엑셀에서 닫고 다시 시도하세요."}
+
+    import datetime
+    _save_adhoc_febstore_manifest({
+        "original": filename,
+        "uploaded_at": datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
+    })
+
+    print(f"[그때그때] 페브스토어 '{filename}' 업로드됨 ({len(data):,} bytes)", flush=True)
+    send_log(f"[그때그때] 페브스토어 '{filename}' 업로드됨")
+    return {"ok": True, **_adhoc_febstore_status()}
+
+
+@app.delete("/api/adhoc/febstore")
+async def delete_adhoc_febstore():
+    """업로드된 페브스토어 엑셀과 조회 캐시를 삭제한다."""
+    if ADHOC_FEBSTORE_FILE.exists():
+        try:
+            ADHOC_FEBSTORE_FILE.unlink()
+        except PermissionError:
+            return {"error": "파일이 열려있어 삭제할 수 없습니다. 엑셀에서 닫고 다시 시도하세요."}
+
+    ADHOC_FEBSTORE_PRICES.unlink(missing_ok=True)
+    _save_adhoc_febstore_manifest({})
+
+    print("[그때그때] 페브스토어 업로드 파일 삭제됨", flush=True)
+    send_log("[그때그때] 페브스토어 업로드 파일 삭제됨")
+    return {"ok": True, **_adhoc_febstore_status()}
+
+
+@app.get("/api/adhoc/febstore/table")
+async def get_adhoc_febstore_table():
+    """업로드된 페브스토어 엑셀을 파싱해 표 데이터를 반환한다(캐시된 매입가 병합)."""
+    if not ADHOC_FEBSTORE_FILE.exists():
+        return {"error": "페브스토어 엑셀을 먼저 업로드하세요.", "rows": [], "count": 0}
+    try:
+        return _adhoc_febstore_table()
+    except Exception as e:
+        return {"error": f"파싱 실패: {e}", "rows": [], "count": 0}
+
+
+@app.post("/api/adhoc/febstore/run")
+async def run_adhoc_febstore():
+    """업로드된 페브스토어 엑셀의 오너클랜 코드를 실시간 매입가 조회한다."""
+    global _adhoc_febstore_running
+    if _adhoc_febstore_running:
+        return {"error": "이미 조회가 진행 중입니다"}
+    if not ADHOC_FEBSTORE_FILE.exists():
+        return {"error": "페브스토어 엑셀을 먼저 업로드하세요."}
+
+    try:
+        table = _adhoc_febstore_table()
+    except Exception as e:
+        return {"error": f"파싱 실패: {e}"}
+
+    codes = febstore_ownerclan_codes(table["rows"])
+    if not codes:
+        return {"error": "오너클랜 상품이 없습니다."}
+
+    _adhoc_febstore_running = True
+    thread = threading.Thread(target=_run_adhoc_febstore_price, args=(codes,), daemon=True)
+    thread.start()
+    return {"ok": True, "message": f"오너클랜 매입가 조회를 시작했습니다 ({len(codes)}개)"}
+
+
+@app.get("/api/adhoc/febstore/download")
+async def download_adhoc_febstore():
+    """페브스토어 판매가/매입가 비교표를 엑셀로 다운로드한다."""
+    if not ADHOC_FEBSTORE_FILE.exists():
+        return {"error": "페브스토어 엑셀을 먼저 업로드하세요."}
+    try:
+        table = _adhoc_febstore_table()
+        content = build_febstore_excel(table["rows"])
+    except Exception as e:
+        return {"error": f"다운로드 실패: {e}"}
+
+    import datetime
+    import urllib.parse
+    filename = f"페브스토어_판매가매입가비교_{datetime.datetime.now():%Y%m%d_%H%M}.xlsx"
+    quoted = urllib.parse.quote(filename)
+    send_log(f"[그때그때] 결과 엑셀 다운로드: {filename}")
+    return Response(
+        content=content,
+        media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        headers={"Content-Disposition": f"attachment; filename=\"febstore_result.xlsx\"; filename*=UTF-8''{quoted}"},
+    )
+
+
+@app.get("/api/adhoc/febstore/status")
+async def adhoc_febstore_status(since: int = 0):
+    """조회 진행상황 + since 이후 새 로그를 반환한다 (HTTP 폴링)."""
+    new_logs = _logs[since:] if since < len(_logs) else []
+    return {
+        "running": _adhoc_febstore_running,
+        "status": _adhoc_febstore_run_status,
+        "logs": new_logs,
+        "log_count": len(_logs),
+    }
 
 
 # ── BearB2B API ────────────────────────────────────────────

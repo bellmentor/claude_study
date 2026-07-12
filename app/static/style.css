@@ -534,6 +534,61 @@ body {
 .detail-sum b { color: #2b3a5b; }
 .detail-sum b.won { color: #1e7e34; }
 
+/* ── 정산마진확인 탭 ──────────────────────────── */
+.margin-section { max-width: 100%; }
+.margin-section h3 { margin-bottom: 6px; font-size: 20px; }
+#margin-upload-card { max-width: 680px; }
+
+.margin-calc-bar { margin-top: 18px; }
+.margin-calc-bar .btn-calc {
+    background: #2b3a5b;
+    padding: 9px 24px;
+    font-weight: 700;
+    font-size: 14px;
+}
+.margin-calc-bar .btn-calc:hover { background: #1e2b45; }
+.margin-calc-bar .btn-calc:disabled { background: #99a3b5; cursor: not-allowed; }
+
+.margin-summary { margin-top: 22px; }
+.margin-unmatched { font-weight: 700; color: #c0392b; font-size: 14px; }
+.margin-total-badge {
+    background: #eef8f0;
+    color: #1e7e34;
+    font-weight: 700;
+    font-size: 14px;
+    padding: 6px 14px;
+    border-radius: 8px;
+}
+.margin-download-btn {
+    margin-left: auto;
+    display: inline-block;
+    text-decoration: none;
+    font-weight: 700;
+    padding: 7px 16px;
+}
+.margin-download-btn:hover { background: #f2f4f7; }
+
+.margin-table-wrap { margin-top: 14px; max-height: 640px; overflow-y: auto; }
+.margin-table { font-size: 12.5px; }
+.margin-table th { position: sticky; top: 0; }
+.margin-table .product-cell { max-width: 260px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.margin-table .won { text-align: right; white-space: nowrap; font-variant-numeric: tabular-nums; }
+.margin-table .won.margin-neg { color: #d32f2f; font-weight: 700; }
+.margin-table .err { color: #c0392b; font-size: 11.5px; font-weight: 600; white-space: nowrap; }
+.margin-table tr.has-err td { background: #fff7f2; }
+
+/* ── 그때그때 탭 ──────────────────────────────── */
+.adhoc-tool {
+    max-width: 100%;
+    padding-top: 8px;
+    margin-top: 14px;
+    border-top: 1px dashed #d5dce6;
+}
+.adhoc-tool:first-of-type { border-top: none; margin-top: 0; padding-top: 0; }
+.adhoc-tool-title { font-size: 17px; margin-bottom: 6px; }
+.margin-calc-bar { display: flex; align-items: center; gap: 10px; }
+.adhoc-run-status { font-size: 13px; color: #445; }
+
 /* ── 하단 로그 ─────────────────────────────────── */
 .log-area {
     background: #ddd;

@@ -11,6 +11,8 @@
 <!-- 상단 네비게이션 -->
 <nav class="top-nav">
     <button class="nav-btn nav-left" data-tab="settlement">정산엑셀관리</button>
+    <button class="nav-btn" data-tab="margin">정산마진확인</button>
+    <button class="nav-btn" data-tab="adhoc">그때그때</button>
     <button class="nav-btn active" data-tab="collect">매입금 수집</button>
     <button class="nav-btn" data-tab="aejulnun">에이준줄눈</button>
     <button class="nav-btn" data-tab="bearb2b">BearB2B</button>
@@ -105,6 +107,48 @@
         <h3>정산엑셀관리</h3>
         <p class="settlement-desc">프로그램이 참조할 정산용 엑셀을 업로드합니다. 드래그앤드롭 또는 파일 찾기로 올리세요.</p>
         <div id="settlement-cards" class="settlement-cards"></div>
+    </section>
+</main>
+
+<!-- 정산마진확인 탭 -->
+<main id="tab-margin" class="tab-content">
+    <section class="margin-section">
+        <h3>정산마진확인</h3>
+        <p class="settlement-desc">정산 작업 중인 엑셀(대량 시트)을 업로드하면, 주문건별로 도매사이트 매입금을 매칭해 마진·마진율을 계산합니다.<br>
+        추후 '원본'/'줄눈' 등 다른 시트도 추가될 수 있어, 아래는 그중 <b>대량</b> 시트 전용 계산 공간입니다.</p>
+
+        <div id="margin-upload-card"></div>
+
+        <div id="margin-calc-bar" class="margin-calc-bar" style="display:none">
+            <button class="btn-primary btn-calc" id="margin-calc-run">매입금 매칭 계산하기</button>
+        </div>
+
+        <div id="margin-result"></div>
+    </section>
+</main>
+
+<!-- 그때그때 탭: 1회성/비정기 요청용 스크래치 공간. 요청이 들어올 때마다
+     이 탭 안에 새 section 블록을 아래로 쌓아 추가한다. -->
+<main id="tab-adhoc" class="tab-content">
+    <section class="margin-section">
+        <h3>그때그때</h3>
+        <p class="settlement-desc">1회성/비정기로 요청하는 작업을 모아두는 공간입니다. 요청할 때마다 아래에 새 도구가 추가됩니다.</p>
+
+        <!-- 도구 1: 페브스토어 판매가/매입가 비교 -->
+        <div class="adhoc-tool">
+            <h4 class="adhoc-tool-title">페브스토어 판매가/매입가 비교</h4>
+            <p class="settlement-desc">스마트스토어 상품관리 다운로드 엑셀(오너클랜/JTC/히트/식자재 등 도매처별 시트)을 업로드하면 판매가·배송비와 도매사이트 매입가·매입배송비를 나란히 보여줍니다.<br>
+            현재는 <b>오너클랜</b>만 실시간 조회를 지원합니다. 다른 사이트는 표에 "미구현"으로 표시됩니다.</p>
+
+            <div id="adhoc-febstore-upload-card"></div>
+
+            <div id="adhoc-febstore-controls" class="margin-calc-bar" style="display:none">
+                <button class="btn-primary btn-calc" id="adhoc-febstore-run">오너클랜 매입가 조회</button>
+                <span id="adhoc-febstore-run-status" class="adhoc-run-status"></span>
+            </div>
+
+            <div id="adhoc-febstore-table"></div>
+        </div>
     </section>
 </main>
 

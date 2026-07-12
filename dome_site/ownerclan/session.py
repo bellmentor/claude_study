@@ -54,6 +54,17 @@ async def get_page() -> Page:
     return page
 
 
+async def get_context() -> BrowserContext:
+    """살아있는 BrowserContext 를 반환한다. 세션이 없으면 자동으로 새로 연다.
+
+    같은 로그인 세션(쿠키 공유) 안에서 탭을 여러 개 열어 병렬 조회할 때 사용한다
+    (예: product_price.py 의 대량 상품 매입가 조회).
+    """
+    if _state["context"] is None:
+        await open_session()
+    return _state["context"]
+
+
 async def close_session() -> None:
     """세션 종료. 다른 도매처로 전환할 때만 호출한다. 같은 도매처 작업 중에는 호출 금지."""
     browser: Browser | None = _state["browser"]
