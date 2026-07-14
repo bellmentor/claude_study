@@ -111,11 +111,17 @@ def summarize_purchase(start_date: str) -> int:
     # 4-2. 취소류(반품/교환/환불/취소) 주문 제외 (공용 필터)
     df = drop_canceled(df, status_col, log=log)
 
-    # 4-3. 실결제금액 행 단순합.
-    # (주의: 사용자 수기 검증 기준 = 다품목 주문이라 실결제금액이 여러 행에 반복돼도
-    #  행 단위로 그대로 합산한다. 주문번호 중복 제거는 하지 않는다.)
+    # 4-3. 주문번호 기준 중복 제거 후 실결제금액 합산.
+    order_col = _find_col(df, ["주문번호", "주문코드", "주문No"])
+    if order_col is not None:
+        before = len(df)
+        df = df.drop_duplicates(subset=[order_col], keep="first")
+        log.info(f"4-3 주문번호 중복 제거: {before}건 → {len(df)}건")
+    else:
+        log.warn("주문번호 컬럼을 찾지 못해 중복 제거를 건너뜁니다")
+
     total = int(df[amount_col].map(_to_int).sum()) if len(df) else 0
-    log.info(f"4-3 실결제금액 행 합계 = {total:,}원 ({len(df)}행)")
+    log.info(f"4-3 실결제금액 합계 = {total:,}원 ({len(df)}행)")
 
     row = {"몇월": month_label, "도매사이트": SITE_LABEL, "매입금": total}
 

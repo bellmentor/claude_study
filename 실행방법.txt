@@ -4,6 +4,15 @@
 ※ venv 활성화 필수: source .venv/Scripts/activate
 
 ────────────────────────────────
+[새 PC에서 git pull 후 필요 패키지 설치]
+────────────────────────────────
+
+pip install pandas openpyxl playwright lxml fastapi uvicorn
+
+※ lxml — 베어B2B(고도몰) 엑셀이 HTML 테이블(.xls) 형식이라 pd.read_html()에 필요
+※ playwright 설치 후: playwright install chromium
+
+────────────────────────────────
 [Web UI]
 ────────────────────────────────
 
