@@ -590,6 +590,12 @@ body {
 .margin-calc-bar { display: flex; align-items: center; gap: 10px; }
 .adhoc-run-status { font-size: 13px; color: #445; }
 
+/* ── 리차스 탭: 건아유통 자료 업로드 ─────────────── */
+.lechas-gh-section { margin-top: 22px; padding-top: 16px; border-top: 1px dashed #d5dce6; }
+.lechas-gh-uploads { display: flex; gap: 24px; flex-wrap: wrap; margin-top: 12px; }
+.lechas-gh-upload-col { flex: 1 1 320px; min-width: 280px; }
+.lechas-gh-upload-col h5 { margin: 0 0 8px; font-size: 14px; color: #334; }
+
 /* ── 하단 로그 ─────────────────────────────────── */
 .log-area {
     background: #ddd;

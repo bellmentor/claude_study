@@ -1498,6 +1498,7 @@ function createRangeCalendar(prefix) {
 }
 
 let lechasCalendar = null;
+let ghLastRange = null;  // 건아유통 마지막 집계 계산에 쓴 기간(다운로드 버튼이 재사용)
 
 function initLechasCalendar() {
     if (!document.getElementById('lechas-cal-month')) return;
@@ -1507,7 +1508,7 @@ function initLechasCalendar() {
         document.querySelectorAll('.lechas-check').forEach(cb => { cb.checked = e.target.checked; });
     });
 
-    document.getElementById('lechas-collect-run').addEventListener('click', () => {
+    document.getElementById('lechas-collect-run').addEventListener('click', async () => {
         const { start, end } = lechasCalendar.getRange();
         if (!start || !end) {
             alert('수집 기간을 선택해주세요.\n달력에서 시작일과 종료일을 클릭하세요.');
@@ -1524,15 +1525,336 @@ function initLechasCalendar() {
             return;
         }
 
-        appendLog('[리차스] 아직 구현되지 않은 기능입니다');
+        for (const name of checked) {
+            if (name === '건아유통') {
+                await runGhSummarize(start, end);
+            } else {
+                appendLog(`[리차스] ${name}: 아직 구현되지 않은 기능입니다`);
+            }
+        }
     });
 
     document.querySelectorAll('.lechas-download-btn').forEach(btn => {
         btn.addEventListener('click', () => {
             const tr = btn.closest('tr');
             const name = tr ? tr.dataset.name : '';
+            if (name === '건아유통') {
+                const range = ghLastRange || lechasCalendar.getRange();
+                if (!range.start || !range.end) {
+                    alert('먼저 수집 기간을 선택하고 수집시작을 눌러주세요.');
+                    return;
+                }
+                window.open(`/api/lechas/geonahyutong/summarize/download?start_date=${range.start}&end_date=${range.end}`, '_blank');
+                return;
+            }
             appendLog(`[리차스] ${name} 다운로드: 아직 구현되지 않은 기능입니다`);
         });
+    });
+
+    initGhUploads();
+    loadGh();
+}
+
+// ── 리차스 - 건아유통 자료 업로드 + 집계 매입금 ────
+async function runGhSummarize(start, end) {
+    const tr = document.querySelector('#lechas-sites-body tr[data-name="건아유통"]');
+    const statusEl = tr ? tr.querySelector('.lechas-result-text') : null;
+    if (statusEl) statusEl.textContent = '계산 중...';
+    try {
+        const resp = await fetch('/api/lechas/geonahyutong/summarize', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ start_date: start, end_date: end }),
+        });
+        const data = await resp.json();
+        if (data.error) {
+            appendLog('[리차스-건아유통] 오류: ' + data.error);
+            if (statusEl) statusEl.textContent = '오류';
+            return;
+        }
+        if (tr) tr.querySelector('.col-amount').textContent = won(data.total);
+        if (statusEl) statusEl.textContent = data.error_count > 0 ? `검증불일치 있음(${data.error_count}건)` : '완료';
+        appendLog(`[리차스-건아유통] 집계 매입금: ${won(data.total)} (${data.day_count}일)`);
+        (data.error_days || []).forEach(d => appendLog(`[리차스-건아유통] 검증 실패: ${d.file} — ${d.issues.join(', ')}`));
+        ghLastRange = { start, end };
+    } catch (e) {
+        appendLog('[리차스-건아유통] 요청 실패: ' + e.message);
+        if (statusEl) statusEl.textContent = '오류';
+    }
+}
+
+async function loadGh() {
+    try {
+        const resp = await fetch('/api/lechas/geonahyutong');
+        const data = await resp.json();
+        renderGhLedger(data.ledger);
+        renderGhSales(data.sales);
+    } catch (e) {
+        appendLog('[리차스-건아유통] 자료 상태 불러오기 실패: ' + e.message);
+    }
+}
+
+function renderGhLedger(ledger) {
+    const box = document.getElementById('gh-ledger-result');
+    if (!box) return;
+    if (!ledger || !ledger.count) {
+        box.innerHTML = '<div class="aejulnun-empty">업로드된 일일마감자료가 없습니다.</div>';
+        return;
+    }
+    box.innerHTML = `
+        <div class="aejulnun-summary">
+            <span class="aejulnun-badge">📁 ${escapeHtml(ledger.folder || '(폴더명 없음)')}</span>
+            <span class="aejulnun-count">엑셀 ${ledger.count}개</span>
+            <span class="aejulnun-time">${escapeHtml(ledger.uploaded_at || '')}</span>
+            <button class="btn-del" id="gh-ledger-clear">비우기</button>
+        </div>
+    `;
+    document.getElementById('gh-ledger-clear').addEventListener('click', async () => {
+        if (!confirm('업로드된 일일마감자료를 모두 비울까요?')) return;
+        await fetch('/api/lechas/geonahyutong/ledger/clear', {
+            method: 'POST',
+            headers: { 'X-Folder': '' },
+        });
+        appendLog('[리차스-건아유통] 일일마감자료 폴더 비움');
+        loadGh();
+    });
+}
+
+function renderGhSales(sales) {
+    const box = document.getElementById('gh-sales-result');
+    const sheetGroup = document.getElementById('gh-sales-sheet-group');
+    const sheetSel = document.getElementById('gh-sales-sheet');
+    const bar = document.getElementById('gh-margin-bar');
+    if (!box) return;
+
+    if (!sales || !sales.uploaded) {
+        box.innerHTML = '<div class="aejulnun-empty">업로드된 매출 주문 엑셀이 없습니다.</div>';
+        sheetGroup.style.display = 'none';
+        bar.style.display = 'none';
+        return;
+    }
+    box.innerHTML = `
+        <div class="aejulnun-summary">
+            <span class="aejulnun-badge">📄 ${escapeHtml(sales.filename || '')}</span>
+            <span class="aejulnun-time">${escapeHtml(sales.uploaded_at || '')}</span>
+            <button class="btn-del" id="gh-sales-clear">삭제</button>
+        </div>
+    `;
+    document.getElementById('gh-sales-clear').addEventListener('click', async () => {
+        if (!confirm('업로드된 매출 주문 엑셀을 삭제할까요?')) return;
+        await fetch('/api/lechas/geonahyutong/sales', { method: 'DELETE' });
+        appendLog('[리차스-건아유통] 매출 주문 엑셀 삭제됨');
+        document.getElementById('gh-margin-result').innerHTML = '';
+        loadGh();
+    });
+
+    const sheets = sales.sheets || [];
+    sheetSel.innerHTML = sheets.map(s => `<option value="${escapeHtml(s)}">${escapeHtml(s)}</option>`).join('');
+    const preferred = sheets.includes('소소매') ? '소소매' : sheets[0];
+    if (preferred) sheetSel.value = preferred;
+    sheetGroup.style.display = sheets.length ? 'flex' : 'none';
+    bar.style.display = sheets.length ? 'flex' : 'none';
+}
+
+async function uploadGhLedgerFolder(files, folderName) {
+    const excels = files.filter(f => hasExcelExt(relPathOf(f)));
+    if (!excels.length) {
+        alert('선택한 폴더에 엑셀(.xlsx/.xls) 파일이 없습니다.');
+        return;
+    }
+    const box = document.getElementById('gh-ledger-result');
+    box.innerHTML = `<div class="aejulnun-empty">업로드 중... (0/${excels.length})</div>`;
+
+    await fetch('/api/lechas/geonahyutong/ledger/clear', {
+        method: 'POST',
+        headers: { 'X-Folder': encodeURIComponent(folderName || '') },
+    });
+
+    let done = 0;
+    for (const f of excels) {
+        await fetch('/api/lechas/geonahyutong/ledger/upload', {
+            method: 'POST',
+            headers: { 'X-Filename': encodeURIComponent(relPathOf(f)) },
+            body: f,
+        });
+        done++;
+        box.innerHTML = `<div class="aejulnun-empty">업로드 중... (${done}/${excels.length})</div>`;
+    }
+
+    appendLog(`[리차스-건아유통] 일일마감자료 폴더 '${folderName}' 업로드 완료: 엑셀 ${excels.length}개`);
+    loadGh();
+}
+
+async function uploadGhSalesFile(file) {
+    const box = document.getElementById('gh-sales-result');
+    box.innerHTML = '<div class="aejulnun-empty">업로드 중...</div>';
+    try {
+        const resp = await fetch('/api/lechas/geonahyutong/sales/upload', {
+            method: 'POST',
+            headers: { 'X-Filename': encodeURIComponent(file.name) },
+            body: file,
+        });
+        const data = await resp.json();
+        if (data.error) {
+            appendLog('[리차스-건아유통] 매출엑셀 업로드 실패: ' + data.error);
+            alert(data.error);
+            loadGh();
+            return;
+        }
+        appendLog(`[리차스-건아유통] 매출엑셀 '${file.name}' 업로드 완료`);
+        loadGh();
+    } catch (e) {
+        appendLog('[리차스-건아유통] 매출엑셀 업로드 실패: ' + e.message);
+        loadGh();
+    }
+}
+
+async function runGhMarginCalc() {
+    const sheet = document.getElementById('gh-sales-sheet').value;
+    if (!sheet) { alert('매출엑셀 시트를 선택해주세요.'); return; }
+    const range = lechasCalendar ? lechasCalendar.getRange() : { start: null, end: null };
+
+    const btn = document.getElementById('gh-margin-calc');
+    const out = document.getElementById('gh-margin-result');
+    btn.disabled = true;
+    btn.textContent = '계산 중...';
+    out.innerHTML = '<div class="aejulnun-empty">계산 중...</div>';
+    try {
+        const resp = await fetch('/api/lechas/geonahyutong/margin', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ sheet, start_date: range.start || '', end_date: range.end || '' }),
+        });
+        const data = await resp.json();
+        if (data.error) {
+            out.innerHTML = '<div class="settlement-error">' + escapeHtml(data.error) + '</div>';
+            appendLog('[리차스-건아유통] 마진표 계산 실패: ' + data.error);
+            return;
+        }
+        renderGhMarginResult(data);
+        appendLog(`[리차스-건아유통] 마진표: ${data.matched_count}/${data.total_count}건 매칭, 마진합계 ${won(data.margin_sum)}`);
+    } catch (e) {
+        out.innerHTML = '<div class="settlement-error">계산 실패: ' + escapeHtml(e.message) + '</div>';
+    } finally {
+        btn.disabled = false;
+        btn.textContent = '마진표 계산하기';
+    }
+}
+
+function renderGhMarginResult(data) {
+    const out = document.getElementById('gh-margin-result');
+    const results = data.results || [];
+    if (!results.length) {
+        out.innerHTML = '<div class="aejulnun-empty">계산할 건아유통(k코드) 주문이 없습니다.</div>';
+        return;
+    }
+    const rows = results.map(r => `
+        <tr class="${r.matched ? '' : 'has-err'}">
+            <td>${escapeHtml(r.date)}</td>
+            <td>${escapeHtml(r.code)}</td>
+            <td>${escapeHtml(r.product)}</td>
+            <td>${r.qty}</td>
+            <td class="won">${won(r.revenue)}</td>
+            <td class="won">${won(r.cost)}</td>
+            <td class="won">${won(r.unit_cost)}</td>
+            <td class="won">${won(r.margin)}</td>
+            <td>${r.margin_rate == null ? '—' : r.margin_rate + '%'}</td>
+            <td class="won">${won(r.price_table_cost)}</td>
+            <td class="won">${won(r.price_table_diff)}</td>
+            <td>${r.matched ? '매칭' : '매칭안됨'}</td>
+            <td class="err">${escapeHtml(r.reason || '')}</td>
+        </tr>
+    `).join('');
+    out.innerHTML = `
+        <h4 class="aejulnun-calc-title">마진표 계산 결과
+            <span class="calc-hint">매칭 ${data.matched_count}/${data.total_count}건 · 마진합계 ${won(data.margin_sum)} · 평균마진율 ${data.avg_margin_rate == null ? '—' : data.avg_margin_rate + '%'}</span>
+        </h4>
+        <div class="aejulnun-calc-wrap">
+            <table class="aejulnun-calc-table margin-table">
+                <thead>
+                    <tr>
+                        <th>주문일자</th><th>상품코드</th><th>상품명</th><th>수량</th>
+                        <th>매출</th><th>실제매입가</th><th>개당단가</th><th>마진</th><th>마진율</th>
+                        <th>단가표매입가(참고)</th><th>단가표차이(참고)</th><th>매칭상태</th><th>비고</th>
+                    </tr>
+                </thead>
+                <tbody>${rows}</tbody>
+            </table>
+        </div>
+    `;
+}
+
+function initGhUploads() {
+    const ledgerZone = document.getElementById('gh-ledger-dropzone');
+    const ledgerInput = document.getElementById('gh-ledger-input');
+    const ledgerBrowse = document.getElementById('gh-ledger-browse');
+    const ledgerText = document.getElementById('gh-ledger-dz-text');
+    if (ledgerZone) {
+        const baseText = ledgerText.textContent;
+        ledgerBrowse.addEventListener('click', () => ledgerInput.click());
+        ledgerInput.addEventListener('change', () => {
+            const files = Array.from(ledgerInput.files || []);
+            if (files.length) uploadGhLedgerFolder(files, folderNameFromFiles(files));
+            ledgerInput.value = '';
+        });
+        ledgerZone.addEventListener('dragover', (e) => {
+            e.preventDefault();
+            ledgerZone.classList.add('dragover');
+            ledgerText.textContent = '여기에 폴더를 놓으세요';
+        });
+        ledgerZone.addEventListener('dragleave', () => {
+            ledgerZone.classList.remove('dragover');
+            ledgerText.textContent = baseText;
+        });
+        ledgerZone.addEventListener('drop', async (e) => {
+            e.preventDefault();
+            ledgerZone.classList.remove('dragover');
+            ledgerText.textContent = baseText;
+            const files = await collectFilesFromDrop(e.dataTransfer);
+            if (files.length) uploadGhLedgerFolder(files, folderNameFromFiles(files));
+        });
+    }
+
+    const salesZone = document.getElementById('gh-sales-dropzone');
+    const salesInput = document.getElementById('gh-sales-input');
+    const salesBrowse = document.getElementById('gh-sales-browse');
+    const salesText = document.getElementById('gh-sales-dz-text');
+    if (salesZone) {
+        const baseText = salesText.textContent;
+        salesBrowse.addEventListener('click', () => salesInput.click());
+        salesInput.addEventListener('change', () => {
+            const f = salesInput.files && salesInput.files[0];
+            if (f) uploadGhSalesFile(f);
+            salesInput.value = '';
+        });
+        salesZone.addEventListener('dragover', (e) => {
+            e.preventDefault();
+            salesZone.classList.add('dragover');
+            salesText.textContent = '여기에 파일을 놓으세요';
+        });
+        salesZone.addEventListener('dragleave', () => {
+            salesZone.classList.remove('dragover');
+            salesText.textContent = baseText;
+        });
+        salesZone.addEventListener('drop', (e) => {
+            e.preventDefault();
+            salesZone.classList.remove('dragover');
+            salesText.textContent = baseText;
+            const f = e.dataTransfer.files && e.dataTransfer.files[0];
+            if (f && hasExcelExt(f.name)) uploadGhSalesFile(f);
+        });
+    }
+
+    const calcBtn = document.getElementById('gh-margin-calc');
+    if (calcBtn) calcBtn.addEventListener('click', runGhMarginCalc);
+
+    const dlBtn = document.getElementById('gh-margin-download');
+    if (dlBtn) dlBtn.addEventListener('click', () => {
+        const sheet = document.getElementById('gh-sales-sheet').value;
+        if (!sheet) { alert('매출엑셀 시트를 선택해주세요.'); return; }
+        const range = lechasCalendar ? lechasCalendar.getRange() : { start: null, end: null };
+        const q = new URLSearchParams({ sheet, start_date: range.start || '', end_date: range.end || '' });
+        window.open(`/api/lechas/geonahyutong/margin/download?${q.toString()}`, '_blank');
     });
 }
 

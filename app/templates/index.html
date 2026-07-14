@@ -269,6 +269,49 @@
             <button id="lechas-collect-run" class="btn-collect">수집시작</button>
         </section>
     </div>
+
+    <!-- 건아유통 자료 업로드 + 마진표 -->
+    <section class="margin-section lechas-gh-section">
+        <h4 class="adhoc-tool-title">건아유통 자료 업로드 및 마진표</h4>
+        <p class="settlement-desc">건아유통은 로그인 없이 엑셀을 주고받는 거래처라, 매입금 계산에 필요한 자료를 직접 업로드합니다.<br>
+        좌측 '일일마감자료'(예치금 차감 장부)를 폴더째 업로드하면 위 표의 매입금이 계산되고, 우측 '매출 주문 엑셀'도 함께 올리면 주문건별 마진표(실제매입가/개당단가/마진/마진율)를 계산할 수 있습니다.</p>
+
+        <div class="lechas-gh-uploads">
+            <div class="lechas-gh-upload-col">
+                <h5>일일마감자료 (예치금 차감 장부, 폴더)</h5>
+                <div class="aejulnun-dropzone" id="gh-ledger-dropzone">
+                    <div class="dropzone-ic">📁</div>
+                    <div class="dropzone-text" id="gh-ledger-dz-text">여기로 폴더를 드래그하거나</div>
+                    <button class="btn-secondary" type="button" id="gh-ledger-browse">폴더 찾기</button>
+                    <input type="file" id="gh-ledger-input" webkitdirectory directory multiple style="display:none">
+                </div>
+                <div id="gh-ledger-result" class="aejulnun-result"></div>
+            </div>
+            <div class="lechas-gh-upload-col">
+                <h5>매출 주문 엑셀 (샵마인 등)</h5>
+                <div class="aejulnun-dropzone" id="gh-sales-dropzone">
+                    <div class="dropzone-ic">📄</div>
+                    <div class="dropzone-text" id="gh-sales-dz-text">여기로 엑셀 파일을 드래그하거나</div>
+                    <button class="btn-secondary" type="button" id="gh-sales-browse">파일 찾기</button>
+                    <input type="file" id="gh-sales-input" accept=".xlsx,.xls" style="display:none">
+                </div>
+                <div id="gh-sales-result" class="aejulnun-result"></div>
+                <div class="aejulnun-controls" id="gh-sales-sheet-group" style="display:none">
+                    <div class="ctl-group">
+                        <label>시트 선택</label>
+                        <select id="gh-sales-sheet"></select>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <div class="margin-calc-bar" id="gh-margin-bar" style="display:none">
+            <button class="btn-primary btn-calc" id="gh-margin-calc">마진표 계산하기</button>
+            <button class="btn-secondary" id="gh-margin-download">마진표 다운로드</button>
+        </div>
+
+        <div id="gh-margin-result"></div>
+    </section>
 </main>
 
 <!-- 하단 로그 -->

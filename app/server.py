@@ -37,6 +37,8 @@ from app.adhoc_febstore import (
     parse_febstore,
 )
 from app.margin import build_result_excel, calc_margin, has_daeryang_sheet
+from lechas.건아유통 import margin as gh_margin
+from lechas.건아유통 import summarize as gh_summarize
 
 # ── 경로 설정 ──────────────────────────────────────────────
 ROOT = Path(__file__).resolve().parents[1]
@@ -83,6 +85,14 @@ BEARB2B_DIR = ROOT / "BearB2B"
 # 리차스: 루트 ./lechas 폴더 하위에 거래처(벤더)별 폴더를 둔다(스캐폴드 단계, UI만 우선 구축).
 LECHAS_DIR = ROOT / "lechas"
 LECHAS_VENDOR_TXT = LECHAS_DIR / "벤더_목록.txt"
+
+# 리차스 - 건아유통: 로그인이 없는 거래처라 파일 업로드로 받는다.
+# 일일마감자료(예치금 차감 장부)는 폴더째, 매출 주문 엑셀은 파일 1개로 업로드.
+LECHAS_GH_DIR = SETTLEMENT_DIR / "lechas" / "건아유통"
+LECHAS_GH_LEDGER_DIR = LECHAS_GH_DIR / "일일마감자료"
+LECHAS_GH_LEDGER_META = LECHAS_GH_LEDGER_DIR / "_meta.json"
+LECHAS_GH_SALES_FILE = LECHAS_GH_DIR / "매출엑셀.xlsx"
+LECHAS_GH_SALES_MANIFEST = LECHAS_GH_DIR / "_sales_manifest.json"
 
 # ── 로그 버퍼 + WebSocket 브로드캐스터 ─────────────────────
 # 로그는 HTTP 폴링(상태 조회)으로 받는 것을 1차 채널로 한다. WebSocket 은
@@ -384,6 +394,95 @@ def _aejulnun_status() -> dict[str, Any]:
         "uploaded_at": meta.get("uploaded_at", ""),
         "count": len(files),
         "files": files,
+    }
+
+
+# ── 리차스 - 건아유통 헬퍼 ──────────────────────────────────
+def _gh_ledger_files() -> list[Path]:
+    """업로드된 건아유통 일일마감자료 폴더의 엑셀 파일 경로 목록을 반환한다."""
+    if not LECHAS_GH_LEDGER_DIR.exists():
+        return []
+    return sorted(
+        f for f in LECHAS_GH_LEDGER_DIR.iterdir()
+        if f.is_file() and f.suffix.lower() in ALLOWED_EXCEL_EXT and not f.name.startswith("~")
+    )
+
+
+def _load_gh_ledger_meta() -> dict[str, Any]:
+    """건아유통 일일마감자료 폴더 메타(_meta.json)를 읽어 반환한다. 없으면 빈 dict."""
+    if not LECHAS_GH_LEDGER_META.exists():
+        return {}
+    try:
+        import json
+        return json.loads(LECHAS_GH_LEDGER_META.read_text(encoding="utf-8"))
+    except Exception:
+        return {}
+
+
+def _save_gh_ledger_meta(meta: dict[str, Any]) -> None:
+    """건아유통 일일마감자료 폴더 메타를 저장한다."""
+    import json
+    LECHAS_GH_LEDGER_DIR.mkdir(parents=True, exist_ok=True)
+    LECHAS_GH_LEDGER_META.write_text(json.dumps(meta, ensure_ascii=False, indent=2), encoding="utf-8")
+
+
+def _wipe_gh_ledger_dir() -> None:
+    """건아유통 일일마감자료 폴더의 파일을 모두 지운다(폴더 자체는 유지)."""
+    if not LECHAS_GH_LEDGER_DIR.exists():
+        return
+    for f in LECHAS_GH_LEDGER_DIR.iterdir():
+        if f.is_file():
+            try:
+                f.unlink()
+            except Exception:
+                pass
+
+
+def _load_gh_sales_manifest() -> dict[str, str]:
+    """건아유통 매출엑셀 manifest(_sales_manifest.json)를 읽어 반환한다. 없으면 빈 dict."""
+    if not LECHAS_GH_SALES_MANIFEST.exists():
+        return {}
+    try:
+        import json
+        return json.loads(LECHAS_GH_SALES_MANIFEST.read_text(encoding="utf-8"))
+    except Exception:
+        return {}
+
+
+def _save_gh_sales_manifest(manifest: dict[str, str]) -> None:
+    """건아유통 매출엑셀 manifest를 저장한다."""
+    import json
+    LECHAS_GH_DIR.mkdir(parents=True, exist_ok=True)
+    LECHAS_GH_SALES_MANIFEST.write_text(json.dumps(manifest, ensure_ascii=False, indent=2), encoding="utf-8")
+
+
+def _gh_status() -> dict[str, Any]:
+    """건아유통 자료 업로드 상태(일일마감자료 폴더 + 매출엑셀)를 만든다."""
+    ledger_meta = _load_gh_ledger_meta()
+    ledger_files = [{"name": f.name, "size": f.stat().st_size} for f in _gh_ledger_files()]
+
+    sales_manifest = _load_gh_sales_manifest()
+    sales_uploaded = LECHAS_GH_SALES_FILE.exists()
+    sheets: list[str] = []
+    if sales_uploaded:
+        try:
+            sheets = gh_margin.list_sheets(LECHAS_GH_SALES_FILE)
+        except Exception:
+            sheets = []
+
+    return {
+        "ledger": {
+            "folder": ledger_meta.get("folder", ""),
+            "uploaded_at": ledger_meta.get("uploaded_at", ""),
+            "count": len(ledger_files),
+            "files": ledger_files,
+        },
+        "sales": {
+            "uploaded": sales_uploaded,
+            "filename": sales_manifest.get("original", "") if sales_uploaded else "",
+            "uploaded_at": sales_manifest.get("uploaded_at", "") if sales_uploaded else "",
+            "sheets": sheets,
+        },
     }
 
 
@@ -1363,6 +1462,207 @@ async def delete_aejulnun():
     print("[에이준줄눈] 작업폴더 비움", flush=True)
     send_log("[에이준줄눈] 작업폴더 비움")
     return {"ok": True, **_aejulnun_status()}
+
+
+# ── 리차스 - 건아유통 API ───────────────────────────────────
+@app.get("/api/lechas/geonahyutong")
+async def get_gh():
+    """건아유통 자료(일일마감자료 폴더 + 매출엑셀) 업로드 상태를 반환한다."""
+    return _gh_status()
+
+
+@app.post("/api/lechas/geonahyutong/ledger/clear")
+async def clear_gh_ledger(request: Request):
+    """새 일일마감자료 폴더 업로드 시작: 기존 폴더를 비우고 메타를 초기화한다.
+
+    선택한 폴더명은 X-Folder 헤더로 전달한다(에이준줄눈과 동일 패턴).
+    """
+    import datetime
+    import urllib.parse
+    folder = urllib.parse.unquote(request.headers.get("x-folder", ""), encoding="utf-8")
+
+    _wipe_gh_ledger_dir()
+    _save_gh_ledger_meta({
+        "folder": folder,
+        "uploaded_at": datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
+    })
+    print(f"[리차스-건아유통] 일일마감자료 폴더 선택: '{folder}' (기존 폴더 비움)", flush=True)
+    send_log(f"[리차스-건아유통] 일일마감자료 폴더 선택: '{folder}'")
+    return {"ok": True}
+
+
+@app.post("/api/lechas/geonahyutong/ledger/upload")
+async def upload_gh_ledger(request: Request):
+    """일일마감자료 폴더 안 엑셀 파일 1개를 업로드한다(에이준줄눈과 동일 패턴, raw body)."""
+    import urllib.parse
+    relpath = urllib.parse.unquote(request.headers.get("x-filename", ""), encoding="utf-8")
+
+    ext = Path(relpath).suffix.lower()
+    if ext not in ALLOWED_EXCEL_EXT:
+        return {"skipped": relpath}
+
+    parts = relpath.replace("\\", "/").split("/")
+    inner = parts[1:] if len(parts) > 1 else parts
+    safe = "__".join(inner) or Path(relpath).name
+
+    data = await request.body()
+    if not data:
+        return {"error": "빈 파일입니다"}
+
+    LECHAS_GH_LEDGER_DIR.mkdir(parents=True, exist_ok=True)
+    dest = LECHAS_GH_LEDGER_DIR / safe
+    try:
+        dest.write_bytes(data)
+    except PermissionError:
+        return {"error": f"파일이 열려있어 저장 실패: {safe}"}
+    return {"ok": True, "saved": safe}
+
+
+@app.post("/api/lechas/geonahyutong/sales/upload")
+async def upload_gh_sales(request: Request):
+    """건아유통 매출 주문 엑셀을 업로드한다(raw body, 정산엑셀 업로드와 동일 패턴)."""
+    import datetime
+    import urllib.parse
+    filename = urllib.parse.unquote(request.headers.get("x-filename", ""), encoding="utf-8")
+
+    ext = Path(filename).suffix.lower()
+    if ext not in ALLOWED_EXCEL_EXT:
+        return {"error": "엑셀 파일(.xlsx, .xls)만 업로드할 수 있습니다"}
+
+    data = await request.body()
+    if not data:
+        return {"error": "빈 파일입니다"}
+
+    LECHAS_GH_DIR.mkdir(parents=True, exist_ok=True)
+    try:
+        LECHAS_GH_SALES_FILE.write_bytes(data)
+    except PermissionError:
+        return {"error": "파일이 열려있어 저장할 수 없습니다. 엑셀에서 닫고 다시 시도하세요."}
+
+    _save_gh_sales_manifest({
+        "original": filename,
+        "uploaded_at": datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
+    })
+
+    print(f"[리차스-건아유통] 매출엑셀 '{filename}' 업로드됨 ({len(data):,} bytes)", flush=True)
+    send_log(f"[리차스-건아유통] 매출엑셀 '{filename}' 업로드됨")
+    return {"ok": True, **_gh_status()}
+
+
+@app.delete("/api/lechas/geonahyutong/sales")
+async def delete_gh_sales():
+    """업로드된 건아유통 매출엑셀을 삭제한다."""
+    if LECHAS_GH_SALES_FILE.exists():
+        try:
+            LECHAS_GH_SALES_FILE.unlink()
+        except PermissionError:
+            return {"error": "파일이 열려있어 삭제할 수 없습니다. 엑셀에서 닫고 다시 시도하세요."}
+    _save_gh_sales_manifest({})
+    print("[리차스-건아유통] 매출엑셀 삭제됨", flush=True)
+    send_log("[리차스-건아유통] 매출엑셀 삭제됨")
+    return {"ok": True, **_gh_status()}
+
+
+@app.post("/api/lechas/geonahyutong/summarize")
+async def summarize_gh(request: Request):
+    """일일마감자료로 선택 기간의 건아유통 집계 매입금을 계산한다."""
+    body = await request.json()
+    start_date = body.get("start_date", "")
+    end_date = body.get("end_date", "")
+    if not start_date or not end_date:
+        return {"error": "수집 기간을 선택해주세요"}
+    if not _gh_ledger_files():
+        return {"error": "일일마감자료를 먼저 업로드하세요"}
+
+    try:
+        result = gh_summarize.summarize_purchase(LECHAS_GH_LEDGER_DIR, start_date, end_date)
+    except Exception as e:
+        return {"error": f"계산 실패: {e}"}
+
+    error_days = [{"file": d.file.name, "issues": d.issues} for d in result["error_days"]]
+    print(
+        f"[리차스-건아유통] 집계 매입금 계산: {start_date}~{end_date} "
+        f"{result['day_count']}일 중 오류 {result['error_count']}건, 매입금 {result['total']:,}원",
+        flush=True,
+    )
+    send_log(f"[리차스-건아유통] 집계 매입금: {result['total']:,}원 ({result['day_count']}일)")
+    return {
+        "total": result["total"],
+        "day_count": result["day_count"],
+        "error_count": result["error_count"],
+        "error_days": error_days,
+    }
+
+
+@app.get("/api/lechas/geonahyutong/summarize/download")
+async def download_gh_summarize(start_date: str, end_date: str):
+    """집계 매입금 계산의 품목별 상세표를 엑셀로 다운로드한다."""
+    if not _gh_ledger_files():
+        return {"error": "일일마감자료를 먼저 업로드하세요"}
+    try:
+        result = gh_summarize.summarize_purchase(LECHAS_GH_LEDGER_DIR, start_date, end_date)
+        data = gh_summarize.build_detail_excel(result)
+    except Exception as e:
+        return {"error": f"다운로드 생성 실패: {e}"}
+    return Response(
+        content=data,
+        media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        headers={"Content-Disposition": "attachment; filename=geonahyutong_maeipgeum.xlsx"},
+    )
+
+
+@app.post("/api/lechas/geonahyutong/margin")
+async def calc_gh_margin(request: Request):
+    """매출엑셀(k코드 건아유통 주문)에 일일마감자료 매입가를 매칭해 주문건별 마진표를 계산한다."""
+    body = await request.json()
+    sheet = body.get("sheet", "")
+    start_date = body.get("start_date", "")
+    end_date = body.get("end_date", "")
+    if not sheet:
+        return {"error": "매출엑셀 시트를 선택해주세요"}
+    if not LECHAS_GH_SALES_FILE.exists():
+        return {"error": "매출 주문 엑셀을 먼저 업로드하세요"}
+    if not _gh_ledger_files():
+        return {"error": "일일마감자료를 먼저 업로드하세요"}
+
+    try:
+        result = gh_margin.calc_margin(
+            LECHAS_GH_SALES_FILE, sheet, LECHAS_GH_LEDGER_DIR,
+            start_date or None, end_date or None,
+        )
+    except Exception as e:
+        return {"error": f"계산 실패: {e}"}
+
+    print(
+        f"[리차스-건아유통] 마진표 계산: {result['total_count']}건 중 매칭 {result['matched_count']}건, "
+        f"마진합계 {result['margin_sum']:,}원",
+        flush=True,
+    )
+    send_log(
+        f"[리차스-건아유통] 마진표 계산: {result['matched_count']}/{result['total_count']}건 매칭, "
+        f"마진합계 {result['margin_sum']:,}원"
+    )
+    return result
+
+
+@app.get("/api/lechas/geonahyutong/margin/download")
+async def download_gh_margin(sheet: str, start_date: str = "", end_date: str = ""):
+    """주문건별 마진표를 엑셀로 다운로드한다."""
+    if not LECHAS_GH_SALES_FILE.exists():
+        return {"error": "매출 주문 엑셀을 먼저 업로드하세요"}
+    try:
+        result = gh_margin.calc_margin(
+            LECHAS_GH_SALES_FILE, sheet, LECHAS_GH_LEDGER_DIR,
+            start_date or None, end_date or None,
+        )
+        data = gh_margin.build_result_excel(result)
+    except Exception as e:
+        return {"error": f"다운로드 생성 실패: {e}"}
+    return Response(
+        content=data,
+        media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        headers={"Content-Disposition": "attachment; filename=geonahyutong_marginpyo.xlsx"},
+    )
 
 
 # ── 수집 API ──────────────────────────────────────────────
