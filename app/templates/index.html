@@ -11,11 +11,11 @@
 <!-- 상단 네비게이션 -->
 <nav class="top-nav">
     <button class="nav-btn nav-left" data-tab="settlement">정산엑셀관리</button>
-    <button class="nav-btn" data-tab="margin">정산마진확인</button>
     <button class="nav-btn" data-tab="adhoc">그때그때</button>
     <button class="nav-btn active" data-tab="collect">매입금 수집</button>
     <button class="nav-btn" data-tab="aejulnun">에이준줄눈</button>
     <button class="nav-btn" data-tab="bearb2b">BearB2B</button>
+    <button class="nav-btn" data-tab="lechas">리차스</button>
     <button class="nav-btn nav-right" data-tab="settings">설정</button>
 </nav>
 
@@ -134,6 +134,13 @@
         <h3>그때그때</h3>
         <p class="settlement-desc">1회성/비정기로 요청하는 작업을 모아두는 공간입니다. 요청할 때마다 아래에 새 도구가 추가됩니다.</p>
 
+        <!-- 도구 0: 정산마진확인 (새창) -->
+        <div class="adhoc-tool">
+            <h4 class="adhoc-tool-title">정산마진확인</h4>
+            <p class="settlement-desc">정산 작업 중인 엑셀(대량 시트)을 업로드하면, 주문건별로 도매사이트 매입금을 매칭해 마진·마진율을 계산합니다. 새 창에서 열립니다.</p>
+            <button class="btn-primary btn-calc" id="adhoc-open-margin">정산마진확인 열기</button>
+        </div>
+
         <!-- 도구 1: 페브스토어 판매가/매입가 비교 -->
         <div class="adhoc-tool">
             <h4 class="adhoc-tool-title">페브스토어 판매가/매입가 비교</h4>
@@ -202,6 +209,66 @@
 
         <div id="bearb2b-result" class="bearb2b-result"></div>
     </section>
+</main>
+
+<!-- 리차스 탭 -->
+<main id="tab-lechas" class="tab-content">
+    <div class="collect-layout">
+        <!-- 좌측: 수집기간 -->
+        <section class="period-section">
+            <h3>수집기간</h3>
+            <div class="calendar-controls">
+                <button id="lechas-cal-prev">&lt;</button>
+                <select id="lechas-cal-month"></select>
+                <select id="lechas-cal-year"></select>
+                <button id="lechas-cal-next">&gt;</button>
+            </div>
+            <table class="calendar" id="lechas-calendar-grid">
+                <thead>
+                    <tr>
+                        <th>Su</th><th>Mo</th><th>Tu</th><th>We</th><th>Th</th><th>Fr</th><th>Sa</th>
+                    </tr>
+                </thead>
+                <tbody></tbody>
+            </table>
+            <div class="selected-range">
+                <span id="lechas-range-display">날짜를 선택하세요</span>
+            </div>
+        </section>
+
+        <!-- 중앙: 거래처 테이블 -->
+        <section class="sites-section">
+            <table class="sites-table">
+                <thead>
+                    <tr>
+                        <th class="col-check"><input type="checkbox" id="lechas-check-all" checked></th>
+                        <th class="col-site">목록</th>
+                        <th class="col-amount">매입금</th>
+                        <th class="col-status">상태</th>
+                        <th class="col-detail">상세내용</th>
+                        <th class="col-memo">기타 메모</th>
+                    </tr>
+                </thead>
+                <tbody id="lechas-sites-body">
+                    {% for vendor in lechas_vendors %}
+                    <tr data-name="{{ vendor.name }}">
+                        <td class="col-check"><input type="checkbox" class="lechas-check" checked></td>
+                        <td class="col-site">{{ vendor.name }}</td>
+                        <td class="col-amount"></td>
+                        <td class="col-status"><span class="lechas-result-text"></span></td>
+                        <td class="col-detail"><button class="btn-secondary lechas-download-btn" type="button">다운로드</button></td>
+                        <td class="col-memo"></td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </section>
+
+        <!-- 우측: 수집시작 -->
+        <section class="action-section">
+            <button id="lechas-collect-run" class="btn-collect">수집시작</button>
+        </section>
+    </div>
 </main>
 
 <!-- 하단 로그 -->

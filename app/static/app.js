@@ -1,19 +1,33 @@
 // ── 탭 전환 ──────────────────────────────────────
-document.querySelectorAll('.nav-btn').forEach(btn => {
-    btn.addEventListener('click', () => {
-        document.querySelectorAll('.nav-btn').forEach(b => b.classList.remove('active'));
-        document.querySelectorAll('.tab-content').forEach(t => t.classList.remove('active'));
-        btn.classList.add('active');
-        document.getElementById('tab-' + btn.dataset.tab).classList.add('active');
+function activateTab(tabName) {
+    const btn = document.querySelector(`.nav-btn[data-tab="${tabName}"]`);
+    document.querySelectorAll('.nav-btn').forEach(b => b.classList.remove('active'));
+    document.querySelectorAll('.tab-content').forEach(t => t.classList.remove('active'));
+    if (btn) btn.classList.add('active');
+    document.getElementById('tab-' + tabName).classList.add('active');
 
-        if (btn.dataset.tab === 'settings') loadAccounts();
-        if (btn.dataset.tab === 'settlement') loadSettlement();
-        if (btn.dataset.tab === 'margin') loadMargin();
-        if (btn.dataset.tab === 'adhoc') loadAdhocFebstore();
-        if (btn.dataset.tab === 'aejulnun') loadAejulnun();
-        if (btn.dataset.tab === 'bearb2b') loadBearB2B();
-    });
+    if (tabName === 'settings') loadAccounts();
+    if (tabName === 'settlement') loadSettlement();
+    if (tabName === 'margin') loadMargin();
+    if (tabName === 'adhoc') loadAdhocFebstore();
+    if (tabName === 'aejulnun') loadAejulnun();
+    if (tabName === 'bearb2b') loadBearB2B();
+}
+
+document.querySelectorAll('.nav-btn').forEach(btn => {
+    btn.addEventListener('click', () => activateTab(btn.dataset.tab));
 });
+
+// 정산마진확인: 그때그때 탭 안 버튼 → 새 창에서 열기 (1회성 작업이라 탭 전환 대신 새창)
+document.getElementById('adhoc-open-margin').addEventListener('click', () => {
+    window.open('/?tab=margin', '_blank');
+});
+
+// URL에 ?tab=xxx 가 있으면 해당 탭을 바로 활성화 (새창으로 여는 정산마진확인용)
+const _initialTab = new URLSearchParams(location.search).get('tab');
+if (_initialTab && document.getElementById('tab-' + _initialTab)) {
+    activateTab(_initialTab);
+}
 
 // ── 달력 ─────────────────────────────────────────
 const calMonth = document.getElementById('cal-month');
@@ -1362,9 +1376,170 @@ function initAejulnun() {
     document.getElementById('aejulnun-calc').addEventListener('click', doAejulnunCalc);
 }
 
+// ── 리차스 탭 ─────────────────────────────────────
+// 매입금 수집 탭 달력(33~174행)과 동일한 로직을 prefix 로 분리해 재사용하는 팩토리.
+// 기존 collect 탭 달력 코드는 그대로 두고(회귀 위험 최소화), 리차스 탭은 이 팩토리로 별도 인스턴스를 만든다.
+function createRangeCalendar(prefix) {
+    const monthSel = document.getElementById(prefix + 'cal-month');
+    const yearSel = document.getElementById(prefix + 'cal-year');
+    const grid = document.querySelector('#' + prefix + 'calendar-grid tbody');
+    const display = document.getElementById(prefix + 'range-display');
+
+    let year, month;
+    let start = null, end = null;
+
+    function render() {
+        grid.innerHTML = '';
+        const firstDay = new Date(year, month, 1).getDay();
+        const daysInMonth = new Date(year, month + 1, 0).getDate();
+        const prevDays = new Date(year, month, 0).getDate();
+
+        const today = new Date();
+        const todayStr = fmt(today.getFullYear(), today.getMonth(), today.getDate());
+
+        let cells = [];
+        for (let i = firstDay - 1; i >= 0; i--) {
+            cells.push({ day: prevDays - i, other: true, month: month - 1, year });
+        }
+        for (let d = 1; d <= daysInMonth; d++) {
+            cells.push({ day: d, other: false, month, year });
+        }
+        const remaining = 42 - cells.length;
+        for (let d = 1; d <= remaining; d++) {
+            cells.push({ day: d, other: true, month: month + 1, year });
+        }
+
+        for (let i = 0; i < cells.length; i += 7) {
+            const tr = document.createElement('tr');
+            for (let j = 0; j < 7; j++) {
+                const cell = cells[i + j];
+                const td = document.createElement('td');
+                td.textContent = cell.day;
+                if (cell.other) td.classList.add('other-month');
+
+                const dateStr = fmt(cell.year, cell.month, cell.day);
+                td.dataset.date = dateStr;
+                if (dateStr === todayStr) td.classList.add('today');
+
+                if (start && end) {
+                    if (dateStr === start) td.classList.add('range-start');
+                    else if (dateStr === end) td.classList.add('range-end');
+                    else if (dateStr > start && dateStr < end) td.classList.add('in-range');
+                } else if (start && dateStr === start) {
+                    td.classList.add('selected');
+                }
+
+                td.addEventListener('click', () => onDateClick(dateStr));
+                tr.appendChild(td);
+            }
+            grid.appendChild(tr);
+        }
+    }
+
+    function onDateClick(dateStr) {
+        if (!start || end) {
+            start = dateStr;
+            end = null;
+        } else if (dateStr < start) {
+            end = start;
+            start = dateStr;
+        } else {
+            end = dateStr;
+        }
+        updateDisplay();
+        render();
+    }
+
+    function updateDisplay() {
+        if (start && end) display.textContent = `${start} ~ ${end}`;
+        else if (start) display.textContent = `${start} (종료일 선택)`;
+        else display.textContent = '날짜를 선택하세요';
+    }
+
+    const now = new Date();
+    year = now.getFullYear();
+    month = now.getMonth();
+
+    for (let m = 0; m < 12; m++) {
+        const opt = document.createElement('option');
+        opt.value = m;
+        opt.textContent = (m + 1) + '월';
+        monthSel.appendChild(opt);
+    }
+    for (let y = year - 3; y <= year + 1; y++) {
+        const opt = document.createElement('option');
+        opt.value = y;
+        opt.textContent = y;
+        yearSel.appendChild(opt);
+    }
+    monthSel.value = month;
+    yearSel.value = year;
+
+    monthSel.addEventListener('change', () => { month = +monthSel.value; render(); });
+    yearSel.addEventListener('change', () => { year = +yearSel.value; render(); });
+    document.getElementById(prefix + 'cal-prev').addEventListener('click', () => {
+        month--;
+        if (month < 0) { month = 11; year--; }
+        monthSel.value = month;
+        yearSel.value = year;
+        render();
+    });
+    document.getElementById(prefix + 'cal-next').addEventListener('click', () => {
+        month++;
+        if (month > 11) { month = 0; year++; }
+        monthSel.value = month;
+        yearSel.value = year;
+        render();
+    });
+
+    render();
+
+    return { getRange: () => ({ start, end }) };
+}
+
+let lechasCalendar = null;
+
+function initLechasCalendar() {
+    if (!document.getElementById('lechas-cal-month')) return;
+    lechasCalendar = createRangeCalendar('lechas-');
+
+    document.getElementById('lechas-check-all').addEventListener('change', (e) => {
+        document.querySelectorAll('.lechas-check').forEach(cb => { cb.checked = e.target.checked; });
+    });
+
+    document.getElementById('lechas-collect-run').addEventListener('click', () => {
+        const { start, end } = lechasCalendar.getRange();
+        if (!start || !end) {
+            alert('수집 기간을 선택해주세요.\n달력에서 시작일과 종료일을 클릭하세요.');
+            return;
+        }
+
+        const checked = [];
+        document.querySelectorAll('#lechas-sites-body tr').forEach(tr => {
+            const cb = tr.querySelector('.lechas-check');
+            if (cb && cb.checked) checked.push(tr.dataset.name);
+        });
+        if (checked.length === 0) {
+            appendLog('[리차스] 수집할 거래처를 선택해주세요');
+            return;
+        }
+
+        appendLog('[리차스] 아직 구현되지 않은 기능입니다');
+    });
+
+    document.querySelectorAll('.lechas-download-btn').forEach(btn => {
+        btn.addEventListener('click', () => {
+            const tr = btn.closest('tr');
+            const name = tr ? tr.dataset.name : '';
+            appendLog(`[리차스] ${name} 다운로드: 아직 구현되지 않은 기능입니다`);
+        });
+    });
+}
+
 // ── 초기화 ───────────────────────────────────────
 initCalendar();
 initMargin();
 initAdhocFebstore();
 initAejulnun();
 initBearB2B();
+initLechasCalendar();

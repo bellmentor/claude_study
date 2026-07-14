@@ -80,6 +80,10 @@ MARGIN_MANIFEST = MARGIN_DIR / "_manifest.json"
 # BearB2B: 루트 ./BearB2B 폴더에서 자체 크롤링/계산 코드를 둔다(스캐폴드 단계).
 BEARB2B_DIR = ROOT / "BearB2B"
 
+# 리차스: 루트 ./lechas 폴더 하위에 거래처(벤더)별 폴더를 둔다(스캐폴드 단계, UI만 우선 구축).
+LECHAS_DIR = ROOT / "lechas"
+LECHAS_VENDOR_TXT = LECHAS_DIR / "벤더_목록.txt"
+
 # ── 로그 버퍼 + WebSocket 브로드캐스터 ─────────────────────
 # 로그는 HTTP 폴링(상태 조회)으로 받는 것을 1차 채널로 한다. WebSocket 은
 # 리로드/늦은 연결 시 메시지를 놓치므로, 버퍼에 쌓아두고 폴링으로 재생한다.
@@ -160,6 +164,21 @@ def load_site_list() -> list[dict[str, str]]:
             if slug:
                 sites.append({"name": name, "slug": slug, "note": SITE_NOTES.get(slug, "")})
     return sites
+
+
+# ── 리차스 벤더 목록 파싱 ──────────────────────────────────
+def load_lechas_vendors() -> list[dict[str, str]]:
+    """lechas/벤더_목록.txt 를 파싱하여 [{name}] 반환. 파일 없으면 빈 리스트."""
+    if not LECHAS_VENDOR_TXT.exists():
+        return []
+    vendors: list[dict[str, str]] = []
+    text = LECHAS_VENDOR_TXT.read_text(encoding="utf-8")
+    for line in text.splitlines():
+        line = line.strip()
+        if not line or line.startswith("#"):
+            continue
+        vendors.append({"name": line})
+    return vendors
 
 
 # ── 정산엑셀 헬퍼 ──────────────────────────────────────────
@@ -582,8 +601,11 @@ def _static_version() -> int:
 async def index(request: Request):
     """메인 페이지."""
     sites = load_site_list()
+    lechas_vendors = load_lechas_vendors()
     return templates.TemplateResponse(
-        request, "index.html", {"sites": sites, "v": _static_version()}
+        request,
+        "index.html",
+        {"sites": sites, "lechas_vendors": lechas_vendors, "v": _static_version()},
     )
 
 

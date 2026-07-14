@@ -136,6 +136,7 @@ body {
 .col-status { min-width: 90px; }
 .col-memo { min-width: 160px; }
 .col-error { min-width: 120px; }
+.col-detail { min-width: 100px; }
 
 .sites-table td.col-check { text-align: center !important; }
 .sites-table input[type="checkbox"] { width: 18px; height: 18px; cursor: pointer; }
